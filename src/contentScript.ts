@@ -1,24 +1,39 @@
-import { CompletionContext, CompletionResult, acceptCompletion, completionStatus, currentCompletions } from '@codemirror/autocomplete';
+import { CompletionContext, CompletionResult, acceptCompletion, completionStatus, currentCompletions, selectedCompletion, startCompletion } from '@codemirror/autocomplete';
 import { syntaxTree } from '@codemirror/language';
 import { Prec } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { ContentScriptContext, MarkdownEditorContentScriptModule } from 'api/types';
-import { RawTagSettings, TagCount, commonPrefix, compileSettings, isTagToken, matchTags, parseTags } from './parser';
+import { RawTagSettings, TagCount, compileSettings, isTagToken, matchTags, nextSegment, parentSegment, parseTags } from './parser';
 
 interface TagsResponse {
   settings: RawTagSettings;
-  tabBehavior: string;
+  fuzzy: boolean;
   tags: TagCount[];
 }
 
 const codeNodes = new Set(['FencedCode', 'CodeBlock', 'InlineCode']);
-let tabBehavior = 'commonPrefix';
+
+const optionTheme = EditorView.baseTheme({
+  '.cm-tooltip-autocomplete li:has(.cm-completionIcon-itag)': {
+    display: 'flex',
+  },
+  '.cm-completionIcon-itag': {
+    display: 'none',
+  },
+  '.cm-tooltip-autocomplete li:has(.cm-completionIcon-itag) .cm-completionDetail': {
+    marginLeft: 'auto',
+    paddingLeft: '1.5em',
+    fontStyle: 'normal',
+    fontVariantNumeric: 'tabular-nums',
+    opacity: '0.7',
+  },
+});
 
 function isTagsResponse(response: any): response is TagsResponse {
   return !!response
     && typeof response.settings?.tagRegex === 'string'
     && typeof response.settings?.excludeRegex === 'string'
-    && typeof response.tabBehavior === 'string'
+    && typeof response.fuzzy === 'boolean'
     && Array.isArray(response.tags)
     && response.tags.every((tag: unknown) => Array.isArray(tag) && typeof tag[0] === 'string' && typeof tag[1] === 'number');
 }
@@ -42,7 +57,6 @@ function completeTags(pluginContext: ContentScriptContext) {
     if (!isTagsResponse(response)) {
       return null;
     }
-    tabBehavior = response.tabBehavior;
     const settings = compileSettings(response.settings);
     if (settings.ignoreCodeBlocks && inCode(context)) {
       return null;
@@ -54,35 +68,45 @@ function completeTags(pluginContext: ContentScriptContext) {
         counts.set(tag, 0);
       }
     }
-    const options = matchTags([...counts], match.text).map(([label, count]) => ({
+    const options = matchTags([...counts], match.text, response.fuzzy).map(([label, count]) => ({
       label,
       detail: count ? String(count) : undefined,
-      type: 'keyword',
+      type: 'itag',
     }));
     return options.length ? { from: match.from, options, filter: false } : null;
   };
 }
 
+function tokenBefore(view: EditorView): { from: number; to: number; text: string } {
+  const to = view.state.selection.main.head;
+  const line = view.state.doc.lineAt(to);
+  const text = /\S*$/.exec(line.text.slice(0, to - line.from))[0];
+  return { from: to - text.length, to, text };
+}
+
+function replaceToken(view: EditorView, insert: string): boolean {
+  const { from, to } = tokenBefore(view);
+  view.dispatch({ changes: { from, to, insert }, selection: { anchor: from + insert.length }, userEvent: 'input.complete' });
+  startCompletion(view);
+  return true;
+}
+
 function tab(view: EditorView): boolean {
+  const selected = completionStatus(view.state) === 'active' && selectedCompletion(view.state);
+  if (!selected) {
+    return false;
+  }
+  const others = currentCompletions(view.state).map((option) => option.label);
+  const segment = nextSegment(selected.label, tokenBefore(view).text, others);
+  return segment === selected.label ? acceptCompletion(view) : replaceToken(view, segment);
+}
+
+function shiftTab(view: EditorView): boolean {
   if (completionStatus(view.state) !== 'active') {
     return false;
   }
-  if (tabBehavior === 'commonPrefix') {
-    const head = view.state.selection.main.head;
-    const line = view.state.doc.lineAt(head);
-    const token = /\S*$/.exec(line.text.slice(0, head - line.from))[0].toLocaleLowerCase();
-    const prefix = commonPrefix(currentCompletions(view.state).map((option) => option.label));
-    if (prefix.length > token.length && prefix.startsWith(token)) {
-      const from = head - token.length;
-      view.dispatch({
-        changes: { from, to: head, insert: prefix },
-        selection: { anchor: from + prefix.length },
-        userEvent: 'input.type',
-      });
-      return true;
-    }
-  }
-  return acceptCompletion(view);
+  const parent = parentSegment(tokenBefore(view).text);
+  return parent ? replaceToken(view, parent) : true;
 }
 
 export default (pluginContext: ContentScriptContext): MarkdownEditorContentScriptModule => ({
@@ -92,7 +116,8 @@ export default (pluginContext: ContentScriptContext): MarkdownEditorContentScrip
     }
     editorControl.addExtension([
       editorControl.joplinExtensions.completionSource(completeTags(pluginContext)),
-      Prec.highest(keymap.of([{ key: 'Tab', run: tab }])),
+      Prec.highest(keymap.of([{ key: 'Tab', run: tab }, { key: 'Shift-Tab', run: shiftTab }])),
+      optionTheme,
     ]);
   },
 });

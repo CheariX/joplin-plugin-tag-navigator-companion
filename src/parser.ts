@@ -13,6 +13,13 @@ export interface RawTagSettings {
   nestedTags: boolean;
   valueDelim: string;
   ignoreHtmlNotes: boolean;
+  todayTag: string;
+  weekTag: string;
+  monthTag: string;
+  dateFormat: string;
+  weekFormat: string;
+  monthFormat: string;
+  weekStartDay: string;
 }
 
 export interface TagSettings extends Omit<RawTagSettings, 'tagRegex' | 'excludeRegex'> {
@@ -27,6 +34,13 @@ export const defaultSettings: RawTagSettings = {
   nestedTags: true,
   valueDelim: '=',
   ignoreHtmlNotes: true,
+  todayTag: '#today',
+  weekTag: '#week',
+  monthTag: '#month',
+  dateFormat: '#yyyy-MM-dd',
+  weekFormat: '#yyyy-MM-dd',
+  monthFormat: '#yyyy-MM',
+  weekStartDay: '0',
 };
 
 // Same heuristic as Tag Navigator (src/utils.ts) to reject ReDoS-prone patterns.
@@ -154,7 +168,7 @@ export function matchTags(tags: TagCount[], token: string, limit = maxOptions): 
 export function nextSegment(tag: string, token: string, others: string[]): string {
   token = token.toLocaleLowerCase();
   const core = token.replace(leadingSymbols, '');
-  const matchEnd = tag.startsWith(token) ? token.length : (subsequence(tag, core)?.pop() ?? -1) + 1;
+  const matchEnd = tag.startsWith(token) ? token.length : (subsequence(tag, core)?.pop() ?? tag.length - 1) + 1;
   const end = tag.slice(matchEnd).search(/[/=]/);
   if (end >= 0) {
     return tag.slice(0, matchEnd + end + 1);

@@ -63,45 +63,12 @@ describe('isTagToken', () => {
 
 describe('matchTags', () => {
   const tags: [string, number][] = [
-    ['#project', 5],
-    ['@person/john', 3],
-    ['#johnson', 1],
-    ['#project/alpha', 2],
-    ['//2026', 4],
-    ['#majo', 9],
-  ];
-  const labels = (token: string) => matchTags(tags, token).map(([tag]) => tag);
-
-  test('prefix first, then segment start, then substring, each by count', () => {
-    expect(labels('@jo')).toEqual(['@person/john', '#johnson', '#majo']);
-  });
-
-  test('prefix matches by count', () => {
-    expect(labels('#pro')).toEqual(['#project', '#project/alpha']);
-  });
-
-  test('symbol-only token matches by prefix', () => {
-    expect(labels('//')).toEqual(['//2026']);
-  });
-
-  test('excludes the exact token and respects the limit', () => {
-    expect(labels('#project')).toEqual(['#project/alpha']);
-    expect(matchTags(tags, '#j', false, 1)).toHaveLength(1);
-  });
-
-  test('is case-insensitive', () => {
-    expect(labels('#PRO')).toEqual(['#project', '#project/alpha']);
-  });
-});
-
-describe('matchTags fuzzy', () => {
-  const tags: [string, number][] = [
     ['@person/john', 3],
     ['@project/jupiter', 1],
     ['#people', 9],
     ['//2026', 4],
   ];
-  const labels = (token: string) => matchTags(tags, token, true).map(([tag]) => tag);
+  const labels = (token: string) => matchTags(tags, token).map(([tag]) => tag);
 
   test('characters in order, segment starts and same prefix rank first', () => {
     expect(labels('@pj')).toEqual(['@person/john', '@project/jupiter']);
@@ -114,6 +81,12 @@ describe('matchTags fuzzy', () => {
 
   test('symbol-only token matches by prefix', () => {
     expect(labels('//')).toEqual(['//2026']);
+  });
+
+  test('excludes the exact token, respects the limit, ignores case', () => {
+    expect(labels('@person/john')).toEqual([]);
+    expect(labels('@PJ')).toEqual(['@person/john', '@project/jupiter']);
+    expect(matchTags(tags, '@p', 1)).toHaveLength(1);
   });
 });
 
@@ -134,7 +107,7 @@ describe('nextSegment', () => {
     expect(nextSegment('#project/alpha/x', '#project/alpha/', all)).toBe('#project/alpha/x');
   });
 
-  test('keeps the searched segment for substring and fuzzy matches', () => {
+  test('keeps the searched segment for fuzzy matches', () => {
     expect(nextSegment('@person/john', '@jo', [])).toBe('@person/john');
     expect(nextSegment('@person/john/x', '@pj', [])).toBe('@person/john/');
   });

@@ -7,7 +7,6 @@ import { RawTagSettings, TagCount, compileSettings, hasDanglingSeparator, isTagT
 
 interface TagsResponse {
   settings: RawTagSettings;
-  fuzzy: boolean;
   tags: TagCount[];
 }
 
@@ -33,7 +32,6 @@ function isTagsResponse(response: any): response is TagsResponse {
   return !!response
     && typeof response.settings?.tagRegex === 'string'
     && typeof response.settings?.excludeRegex === 'string'
-    && typeof response.fuzzy === 'boolean'
     && Array.isArray(response.tags)
     && response.tags.every((tag: unknown) => Array.isArray(tag) && typeof tag[0] === 'string' && typeof tag[1] === 'number');
 }
@@ -68,7 +66,7 @@ function completeTags(pluginContext: ContentScriptContext) {
         counts.set(tag, 0);
       }
     }
-    const options = matchTags([...counts], match.text, response.fuzzy).map(([label, count]) => ({
+    const options = matchTags([...counts], match.text).map(([label, count]) => ({
       label,
       detail: count ? String(count) : undefined,
       type: 'itag',

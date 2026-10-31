@@ -1,4 +1,4 @@
-import { compileSettings, createSafeRegex, defTagRegex, defaultSettings, isTagToken, matchTags, nextSegment, parentSegment, parseTags } from '../src/parser';
+import { compileSettings, createSafeRegex, defTagRegex, defaultSettings, hasDanglingSeparator, isTagToken, matchTags, nextSegment, parentSegment, parseTags } from '../src/parser';
 
 const parse = (text: string, overrides = {}) =>
   [...parseTags(text, compileSettings({ ...defaultSettings, ...overrides }))].sort();
@@ -147,5 +147,15 @@ describe('parentSegment', () => {
     expect(parentSegment('#status=op')).toBe('#status=');
     expect(parentSegment('#project/')).toBeNull();
     expect(parentSegment('#pro')).toBeNull();
+  });
+});
+
+describe('hasDanglingSeparator', () => {
+  test('tag ending in a separator', () => {
+    expect(hasDanglingSeparator('#hello/')).toBe(true);
+    expect(hasDanglingSeparator('#status=')).toBe(true);
+    expect(hasDanglingSeparator('#hello')).toBe(false);
+    expect(hasDanglingSeparator('//')).toBe(false);
+    expect(hasDanglingSeparator('word/')).toBe(false);
   });
 });

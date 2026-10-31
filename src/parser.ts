@@ -180,6 +180,11 @@ export function nextSegment(tag: string, token: string, others: string[]): strin
   return child ? child.slice(0, tag.length + 1) : tag;
 }
 
+// A tag ending in '/' or '=' (e.g. left over after Tab), which Tag Navigator would trim anyway.
+export function hasDanglingSeparator(token: string): boolean {
+  return isTagToken(token) && /[\p{L}\p{N}][/=]$/u.test(token);
+}
+
 export function parentSegment(token: string): string | null {
   const trimmed = token.replace(/[/=]$/, '');
   const cut = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('='));

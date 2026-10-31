@@ -13,6 +13,7 @@ interface TagsResponse {
 }
 
 const codeNodes = new Set(['FencedCode', 'CodeBlock', 'InlineCode']);
+let dateNames = new Set<string>();
 
 const optionTheme = EditorView.baseTheme({
   '.cm-tooltip-autocomplete li:has(.cm-completionIcon-itag)': {
@@ -70,21 +71,22 @@ function completeTags(pluginContext: ContentScriptContext) {
         counts.set(tag, 0);
       }
     }
-    const dates = new Map(response.dateTags.map((d) => [d.tag, d]));
-    for (const tag of dates.keys()) {
-      counts.set(tag, counts.get(tag) ?? 0);
+    dateNames = new Set(response.dateTags.map((d) => d.tag.replace(/[+-]\d+$/, '')));
+    for (const name of dateNames) {
+      counts.set(name, counts.get(name) ?? 0);
     }
     const token = match.text.toLocaleLowerCase();
-    const matched = matchTags([...counts], token);
-    if (dates.has(token)) {
-      matched.unshift([token, 0]);
-    }
-    const options = matched.flatMap(([label, count]) => {
-      const date = dates.get(label);
-      return date
-        ? [{ label: date.date, detail: date.label, type: 'itag' }, { label, detail: 'dynamic', type: 'itag' }]
-        : [{ label, detail: count ? String(count) : undefined, type: 'itag' }];
-    }).filter((option, i, all) => all.findIndex((other) => other.label === option.label) === i);
+    const date = response.dateTags.find((d) => d.tag === token);
+    const options = [
+      ...(date ? [{ label: date.date, detail: date.label }] : []),
+      ...(dateNames.has(token) ? [{ label: `${token}+`, detail: 'offset' }] : []),
+      ...matchTags([...counts], token).map(([label, count]) => ({
+        label,
+        detail: dateNames.has(label) ? 'date tag' : count ? String(count) : undefined,
+      })),
+    ]
+      .filter((option, i, all) => all.findIndex((other) => other.label === option.label) === i)
+      .map((option) => ({ ...option, type: 'itag' }));
     return options.length ? { from: match.from, options, filter: false } : null;
   };
 }
@@ -107,6 +109,10 @@ function tab(view: EditorView): boolean {
   const selected = completionStatus(view.state) === 'active' && selectedCompletion(view.state);
   if (!selected) {
     return false;
+  }
+  // A date tag name works like a level: Tab inserts it and offers its date and offset.
+  if (dateNames.has(selected.label.replace(/\+$/, ''))) {
+    return replaceToken(view, selected.label);
   }
   const others = currentCompletions(view.state).map((option) => option.label);
   const segment = nextSegment(selected.label, tokenBefore(view).text, others);

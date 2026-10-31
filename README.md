@@ -5,9 +5,7 @@ Autocompletion for inline tags in the Joplin Markdown editor (CodeMirror 6), bui
 - Requires Inline Tag Navigator: without it (or while it is disabled) this plugin does nothing.
 - Tags are found with the same settings as Tag Navigator (tag regex, exclude regex, code blocks, nested tags, HTML notes). Changes to those settings apply after switching notes, after a sync, at most a minute later, or immediately via *Reload tags now* in the plugin settings.
 - Works with any tag prefix your regex allows, e.g. `#tag`, `@person`, `!status`, `//2026`. Suggestions open when a word starts with a symbol (not a letter or digit).
-- Search mode (setting):
-  - *Fuzzy* (default): the typed characters only need to appear in order, e.g. `@pj` finds `@person/john`.
-  - *Ranked*: typing `@jo` suggests `@person/john`. Prefix matches come first, then nested segments, then substrings, each ranked by the number of notes.
+- Fuzzy search: the typed characters only need to appear in order, e.g. `@pj` finds `@person/john`. Same prefix, consecutive characters and segment starts rank first, then the number of notes.
 - Joplin's native tags are neither read nor written.
 
 ## Keys

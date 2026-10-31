@@ -119,11 +119,9 @@ async function getTags(token: string) {
   if (!tagNavigatorActive) {
     return null;
   }
-  const fuzzy = await joplin.settings.value('searchMode') === 'fuzzy';
   return {
     settings: rawSettings,
-    fuzzy,
-    tags: matchTags(tagList ?? [], token, fuzzy),
+    tags: matchTags(tagList ?? [], token),
   };
 }
 
@@ -145,18 +143,6 @@ joplin.plugins.register({
         section: 'tagNavigatorCompanion',
         label: 'Reload tags now (tick to run)',
         description: 'Ticking this reloads all tags with the current Tag Navigator settings. The tick is removed again automatically.',
-      },
-      searchMode: {
-        value: 'fuzzy',
-        type: SettingItemType.String,
-        isEnum: true,
-        options: {
-          ranked: 'Start, then nested segment, then substring',
-          fuzzy: 'Fuzzy (characters in order, e.g. @pj finds @person/john)',
-        },
-        public: true,
-        section: 'tagNavigatorCompanion',
-        label: 'Search mode',
       },
     });
 

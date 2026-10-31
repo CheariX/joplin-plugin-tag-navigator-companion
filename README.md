@@ -6,6 +6,7 @@ Autocompletion for inline tags in the Joplin Markdown editor (CodeMirror 6), bui
 - Tags are found with the same settings as Tag Navigator (tag regex, exclude regex, code blocks, nested tags, HTML notes). Changes to those settings apply after switching notes, after a sync, at most a minute later, or immediately via *Reload tags now* in the plugin settings.
 - Works with any tag prefix your regex allows, e.g. `#tag`, `@person`, `!status`, `//2026`. Suggestions open when a word starts with a symbol (not a letter or digit).
 - Fuzzy search: the typed characters only need to appear in order, e.g. `@pj` finds `@person/john`. Same prefix, consecutive characters and segment starts rank first, then the number of notes.
+- Date tags: typing the name of a Tag Navigator date tag (`#today`, `#week`, `#month`, optionally with `+n`/`-n`) offers two entries. One is the date itself, e.g. `#2026-10-31`, formatted with Tag Navigator's date settings. The other is the tag name, which stays *dynamic*: Tag Navigator resolves it to the current date every day.
 - Joplin's native tags are neither read nor written.
 
 ## Keys
@@ -22,7 +23,7 @@ This is a proof of concept.
 - **Tags are rebuilt, not shared.** Tag Navigator keeps its tag index in memory and does not expose it to other plugins. This plugin reads Tag Navigator's settings and builds its own index from the note bodies. Notes are therefore read and held in memory a second time.
 - **Own, simpler parser.** Results can differ from Tag Navigator in edge cases. Not supported:
   - front matter tags
-  - date tags such as `#today`
+  - resolving date tags in notes: a literal `#today` is listed as `#today`, not as today's date
   - indented (four-space) code blocks
   - notebook include/exclude lists
   - `minCount`

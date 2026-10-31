@@ -2,6 +2,8 @@
 
 Autocompletion for inline tags in the Joplin Markdown editor (CodeMirror 6), built as a companion to [Inline Tag Navigator](https://github.com/alondmnt/joplin-plugin-tag-navigator).
 
+![Tag suggestions for #hel with nested tags and usage counts](img/autocomplete.png)
+
 - Requires Inline Tag Navigator: without it (or while it is disabled) this plugin does nothing.
 - Tags are found with the same settings as Tag Navigator (tag regex, exclude regex, code blocks, nested tags, HTML notes). Changes to those settings apply after switching notes, after a sync, at most a minute later, or immediately via *Reload tags now* in the plugin settings.
 - Works with any tag prefix your regex allows, e.g. `#tag`, `@person`, `!status`, `//2026`. Suggestions open when a word starts with a symbol (not a letter or digit).

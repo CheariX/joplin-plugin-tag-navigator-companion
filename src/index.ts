@@ -147,7 +147,7 @@ joplin.plugins.register({
         description: 'Ticking this reloads all tags with the current Tag Navigator settings. The tick is removed again automatically.',
       },
       searchMode: {
-        value: 'ranked',
+        value: 'fuzzy',
         type: SettingItemType.String,
         isEnum: true,
         options: {

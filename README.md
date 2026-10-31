@@ -16,6 +16,20 @@ Autocompletion for inline tags in the Joplin Markdown editor (CodeMirror 6), bui
 - `Enter` inserts the whole selected tag, `Esc` closes the list.
 - Without an open list, `Tab` and `Shift-Tab` indent as usual.
 
+## Advantages over the Inline Tags plugin
+
+The [Inline Tags plugin](https://github.com/roman-r-m/joplin-inline-tags-plugin) also completes tags in the Markdown editor, but works differently:
+
+- **Source of suggestions:** Inline Tags suggests Joplin's native tags. This plugin suggests the inline tags written in your notes, as found by Inline Tag Navigator.
+- **No changes to native tags:** Choosing a suggestion in Inline Tags attaches a native tag to the note and can create new native tags. This plugin only inserts text and neither reads nor writes Joplin's tag database.
+- **Any prefix:** Inline Tags only triggers on `#`. This plugin works with any symbol prefix allowed by Tag Navigator's tag regex, e.g. `@person`, `!status`, `//2026`.
+- **Fuzzy matching and ranking:** Inline Tags matches by case-sensitive prefix only, in no particular order. This plugin uses fuzzy matching and ranks by match quality and by the number of notes using a tag.
+- **Nested tags:** `Tab`/`Shift-Tab` move through tag levels (`#project/` → `#project/alpha`). Inline Tags has no special handling for nested tags.
+- **Date tags:** `#today`, `#week`, `#month` (with `+n`/`-n`) can be inserted as a fixed date or as the dynamic tag.
+- **Consistent with Tag Navigator:** Exclude regex, code-block and nested-tag settings are taken from Tag Navigator.
+
+Inline Tags, on the other hand, works without Tag Navigator, also supports the legacy (CodeMirror 5) editor, and suits you better if you want real Joplin tags.
+
 ## Limitations
 
 This is a proof of concept.

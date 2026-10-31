@@ -3,11 +3,13 @@ import { syntaxTree } from '@codemirror/language';
 import { Prec } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { ContentScriptContext, MarkdownEditorContentScriptModule } from 'api/types';
+import type { DateTag } from './dateTags';
 import { RawTagSettings, TagCount, compileSettings, hasDanglingSeparator, isTagToken, matchTags, nextSegment, parentSegment, parseTags } from './parser';
 
 interface TagsResponse {
   settings: RawTagSettings;
   tags: TagCount[];
+  dateTags: DateTag[];
 }
 
 const codeNodes = new Set(['FencedCode', 'CodeBlock', 'InlineCode']);
@@ -33,7 +35,9 @@ function isTagsResponse(response: any): response is TagsResponse {
     && typeof response.settings?.tagRegex === 'string'
     && typeof response.settings?.excludeRegex === 'string'
     && Array.isArray(response.tags)
-    && response.tags.every((tag: unknown) => Array.isArray(tag) && typeof tag[0] === 'string' && typeof tag[1] === 'number');
+    && response.tags.every((tag: unknown) => Array.isArray(tag) && typeof tag[0] === 'string' && typeof tag[1] === 'number')
+    && Array.isArray(response.dateTags)
+    && response.dateTags.every((d: any) => typeof d?.tag === 'string' && typeof d.date === 'string' && typeof d.label === 'string');
 }
 
 function inCode(context: CompletionContext): boolean {
@@ -66,11 +70,21 @@ function completeTags(pluginContext: ContentScriptContext) {
         counts.set(tag, 0);
       }
     }
-    const options = matchTags([...counts], match.text).map(([label, count]) => ({
-      label,
-      detail: count ? String(count) : undefined,
-      type: 'itag',
-    }));
+    const dates = new Map(response.dateTags.map((d) => [d.tag, d]));
+    for (const tag of dates.keys()) {
+      counts.set(tag, counts.get(tag) ?? 0);
+    }
+    const token = match.text.toLocaleLowerCase();
+    const matched = matchTags([...counts], token);
+    if (dates.has(token)) {
+      matched.unshift([token, 0]);
+    }
+    const options = matched.flatMap(([label, count]) => {
+      const date = dates.get(label);
+      return date
+        ? [{ label: date.date, detail: date.label, type: 'itag' }, { label, detail: 'dynamic', type: 'itag' }]
+        : [{ label, detail: count ? String(count) : undefined, type: 'itag' }];
+    }).filter((option, i, all) => all.findIndex((other) => other.label === option.label) === i);
     return options.length ? { from: match.from, options, filter: false } : null;
   };
 }

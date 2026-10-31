@@ -107,26 +107,54 @@ export function isTagToken(token: string): boolean {
   return token.length >= 2 && token.length <= maxTagLength && leadingSymbols.test(token);
 }
 
-function rank(tag: string, token: string, core: string): number {
+// Positions of the characters of `core` in `tag`, matched left to right.
+function subsequence(tag: string, core: string): number[] | null {
+  const positions: number[] = [];
+  for (const char of core) {
+    const i = tag.indexOf(char, (positions[positions.length - 1] ?? -1) + 1);
+    if (i < 0) {
+      return null;
+    }
+    positions.push(i);
+  }
+  return positions;
+}
+
+// Lower is better; null means no match.
+function rank(tag: string, token: string, core: string): number | null {
   if (tag.startsWith(token)) {
     return 0;
   }
   if (!core) {
-    return -1;
+    return null;
   }
   if (tag.split('/').some((part) => part.replace(leadingSymbols, '').startsWith(core))) {
     return 1;
   }
-  return tag.includes(core) ? 2 : -1;
+  return tag.includes(core) ? 2 : null;
 }
 
-export function matchTags(tags: TagCount[], token: string, limit = maxOptions): TagCount[] {
+// Rewards the same prefix symbols, consecutive characters and characters at segment starts.
+function fuzzyRank(tag: string, token: string, core: string): number | null {
+  const positions = subsequence(tag, core);
+  if (!positions || !core) {
+    return tag.startsWith(token) ? 0 : null;
+  }
+  let score = tag.startsWith(token.slice(0, token.length - core.length)) ? 3 : 0;
+  positions.forEach((i, n) => {
+    score += (i === positions[n - 1] + 1 ? 2 : 0) + (/[^\p{L}\p{N}]/u.test(tag[i - 1] ?? '/') ? 3 : 0);
+  });
+  return -score;
+}
+
+export function matchTags(tags: TagCount[], token: string, fuzzy = false, limit = maxOptions): TagCount[] {
   token = token.toLocaleLowerCase();
   const core = token.replace(leadingSymbols, '');
+  const scorer = fuzzy ? fuzzyRank : rank;
   const ranked: [number, TagCount][] = [];
   for (const entry of tags) {
-    const r = entry[0] === token ? -1 : rank(entry[0], token, core);
-    if (r >= 0) {
+    const r = entry[0] === token ? null : scorer(entry[0], token, core);
+    if (r !== null) {
       ranked.push([r, entry]);
     }
   }
@@ -136,12 +164,25 @@ export function matchTags(tags: TagCount[], token: string, limit = maxOptions): 
     .map(([, entry]) => entry);
 }
 
-export function commonPrefix(words: string[]): string {
-  let prefix = words[0] ?? '';
-  for (const word of words) {
-    while (!word.startsWith(prefix)) {
-      prefix = prefix.slice(0, -1);
-    }
+// Tag up to the next '/' or '=' after the typed part, or the whole tag if it has no deeper level.
+export function nextSegment(tag: string, token: string, others: string[]): string {
+  token = token.toLocaleLowerCase();
+  const core = token.replace(leadingSymbols, '');
+  const substring = tag.indexOf(core);
+  const matchEnd = tag.startsWith(token) ? token.length
+    : substring >= 0 ? substring + core.length
+      : (subsequence(tag, core)?.pop() ?? -1) + 1;
+  const end = tag.slice(matchEnd).search(/[/=]/);
+  if (end >= 0) {
+    return tag.slice(0, matchEnd + end + 1);
   }
-  return prefix;
+  const child = others.find((other) => other.startsWith(tag + '/') || other.startsWith(tag + '='));
+  return child ? child.slice(0, tag.length + 1) : tag;
+}
+
+export function parentSegment(token: string): string | null {
+  const trimmed = token.replace(/[/=]$/, '');
+  const cut = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('='));
+  const parent = trimmed.slice(0, cut + 1);
+  return cut > 0 && isTagToken(parent) ? parent : null;
 }

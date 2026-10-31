@@ -3,7 +3,7 @@ import { syntaxTree } from '@codemirror/language';
 import { Prec } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { ContentScriptContext, MarkdownEditorContentScriptModule } from 'api/types';
-import { RawTagSettings, TagCount, compileSettings, isTagToken, matchTags, nextSegment, parentSegment, parseTags } from './parser';
+import { RawTagSettings, TagCount, compileSettings, hasDanglingSeparator, isTagToken, matchTags, nextSegment, parentSegment, parseTags } from './parser';
 
 interface TagsResponse {
   settings: RawTagSettings;
@@ -109,6 +109,15 @@ function shiftTab(view: EditorView): boolean {
   return parent ? replaceToken(view, parent) : true;
 }
 
+// Typing a space right after '#tag/' or '#tag=' removes the separator.
+const dropDanglingSeparator = EditorView.inputHandler.of((view, from, to, text) => {
+  if (text !== ' ' || from !== to || from !== view.state.selection.main.head || !hasDanglingSeparator(tokenBefore(view).text)) {
+    return false;
+  }
+  view.dispatch({ changes: { from: from - 1, to, insert: ' ' }, selection: { anchor: from }, userEvent: 'input.type' });
+  return true;
+});
+
 export default (pluginContext: ContentScriptContext): MarkdownEditorContentScriptModule => ({
   plugin: (editorControl) => {
     if (!editorControl.cm6 || !editorControl.joplinExtensions) {
@@ -118,6 +127,7 @@ export default (pluginContext: ContentScriptContext): MarkdownEditorContentScrip
       editorControl.joplinExtensions.completionSource(completeTags(pluginContext)),
       Prec.highest(keymap.of([{ key: 'Tab', run: tab }, { key: 'Shift-Tab', run: shiftTab }])),
       optionTheme,
+      dropDanglingSeparator,
     ]);
   },
 });

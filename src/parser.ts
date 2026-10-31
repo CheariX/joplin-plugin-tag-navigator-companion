@@ -120,22 +120,9 @@ function subsequence(tag: string, core: string): number[] | null {
   return positions;
 }
 
-// Lower is better; null means no match.
+// Fuzzy score, lower is better, null means no match. Rewards the same prefix symbols,
+// consecutive characters and characters at segment starts.
 function rank(tag: string, token: string, core: string): number | null {
-  if (tag.startsWith(token)) {
-    return 0;
-  }
-  if (!core) {
-    return null;
-  }
-  if (tag.split('/').some((part) => part.replace(leadingSymbols, '').startsWith(core))) {
-    return 1;
-  }
-  return tag.includes(core) ? 2 : null;
-}
-
-// Rewards the same prefix symbols, consecutive characters and characters at segment starts.
-function fuzzyRank(tag: string, token: string, core: string): number | null {
   const positions = subsequence(tag, core);
   if (!positions || !core) {
     return tag.startsWith(token) ? 0 : null;
@@ -147,13 +134,12 @@ function fuzzyRank(tag: string, token: string, core: string): number | null {
   return -score;
 }
 
-export function matchTags(tags: TagCount[], token: string, fuzzy = false, limit = maxOptions): TagCount[] {
+export function matchTags(tags: TagCount[], token: string, limit = maxOptions): TagCount[] {
   token = token.toLocaleLowerCase();
   const core = token.replace(leadingSymbols, '');
-  const scorer = fuzzy ? fuzzyRank : rank;
   const ranked: [number, TagCount][] = [];
   for (const entry of tags) {
-    const r = entry[0] === token ? null : scorer(entry[0], token, core);
+    const r = entry[0] === token ? null : rank(entry[0], token, core);
     if (r !== null) {
       ranked.push([r, entry]);
     }
@@ -168,10 +154,7 @@ export function matchTags(tags: TagCount[], token: string, fuzzy = false, limit 
 export function nextSegment(tag: string, token: string, others: string[]): string {
   token = token.toLocaleLowerCase();
   const core = token.replace(leadingSymbols, '');
-  const substring = tag.indexOf(core);
-  const matchEnd = tag.startsWith(token) ? token.length
-    : substring >= 0 ? substring + core.length
-      : (subsequence(tag, core)?.pop() ?? -1) + 1;
+  const matchEnd = tag.startsWith(token) ? token.length : (subsequence(tag, core)?.pop() ?? -1) + 1;
   const end = tag.slice(matchEnd).search(/[/=]/);
   if (end >= 0) {
     return tag.slice(0, matchEnd + end + 1);

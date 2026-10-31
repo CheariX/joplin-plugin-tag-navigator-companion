@@ -15,6 +15,24 @@ Autocompletion for inline tags in the Joplin Markdown editor (CodeMirror 6), bui
 - `Enter` inserts the whole selected tag, `Esc` closes the list.
 - Without an open list, `Tab` and `Shift-Tab` indent as usual.
 
+## Limitations
+
+This is a proof of concept.
+
+- **Tags are rebuilt, not shared.** Tag Navigator keeps its tag index in memory and does not expose it to other plugins. This plugin reads Tag Navigator's settings and builds its own index from the note bodies. Notes are therefore read and held in memory a second time.
+- **Own, simpler parser.** Results can differ from Tag Navigator in edge cases. Not supported:
+  - front matter tags
+  - date tags such as `#today`
+  - indented (four-space) code blocks
+  - notebook include/exclude lists
+  - `minCount`
+- **Settings changes are not detected.** Joplin does not notify a plugin about another plugin's settings. Changes apply after switching notes, after a sync or at most a minute later. *Reload tags now* applies them immediately. It is a checkbox because plugins cannot add buttons to the settings page.
+- **Coupled to Tag Navigator internals.** The plugin reads settings by Tag Navigator's plugin ID and `itags.*` keys. If those are renamed, Tag Navigator counts as missing and this plugin stays inactive.
+- **Trigger.** Suggestions only open for words starting with a symbol. Tags without a leading symbol, e.g. `tag:foo`, are not completed.
+- **Lowercase.** Tags are suggested and inserted in lowercase, as Tag Navigator stores them.
+- **Editor.** Only the CodeMirror 6 editor is supported, not the legacy editor. Mobile has no Tab key: tap a suggestion or type `/` instead.
+- **First use.** The first suggestion list after start may take a moment while the index is built.
+
 ## Development
 
 ```sh

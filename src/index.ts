@@ -119,10 +119,11 @@ async function getTags(token: string) {
   if (!tagNavigatorActive) {
     return null;
   }
+  const fuzzy = await joplin.settings.value('searchMode') === 'fuzzy';
   return {
     settings: rawSettings,
-    tabBehavior: await joplin.settings.value('tabBehavior'),
-    tags: matchTags(tagList ?? [], token),
+    fuzzy,
+    tags: matchTags(tagList ?? [], token, fuzzy),
   };
 }
 
@@ -133,7 +134,8 @@ joplin.plugins.register({
       iconName: 'fas fa-tags',
       description: 'Suggests inline tags while typing. Requires the Inline Tag Navigator plugin and uses its tag settings. '
         + 'Changes to Tag Navigator settings apply after switching notes, after a sync or at most a minute later. '
-        + 'Tick "Reload tags now" to apply them immediately.',
+        + 'To apply them immediately, tick "Reload tags now" (works like a button and unticks itself). '
+        + 'Keys in the suggestion list: Tab completes the next level, Shift-Tab goes one level up, Enter inserts the whole tag.',
     });
     await joplin.settings.registerSettings({
       reload: {
@@ -141,20 +143,20 @@ joplin.plugins.register({
         type: SettingItemType.Bool,
         public: true,
         section: 'tagNavigatorCompanion',
-        label: 'Reload tags now',
-        description: 'Rebuilds the tag index with the current Tag Navigator settings, then unticks itself.',
+        label: 'Reload tags now (tick to run)',
+        description: 'Ticking this reloads all tags with the current Tag Navigator settings. The tick is removed again automatically.',
       },
-      tabBehavior: {
-        value: 'commonPrefix',
+      searchMode: {
+        value: 'ranked',
         type: SettingItemType.String,
         isEnum: true,
         options: {
-          commonPrefix: 'Complete common prefix, then accept',
-          accept: 'Accept selected suggestion',
+          ranked: 'Start, then nested segment, then substring',
+          fuzzy: 'Fuzzy (characters in order, e.g. @pj finds @person/john)',
         },
         public: true,
         section: 'tagNavigatorCompanion',
-        label: 'Tab key in tag suggestions',
+        label: 'Search mode',
       },
     });
 

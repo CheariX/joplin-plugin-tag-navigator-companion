@@ -1,5 +1,6 @@
 import joplin from 'api';
 import { ContentScriptType, SettingItemType } from 'api/types';
+import { dateTagsFor } from './dateTags';
 import { RawTagSettings, TagCount, TagSettings, compileSettings, defaultSettings, isTagToken, matchTags, parseTags } from './parser';
 
 const contentScriptId = 'tagNavigatorCompanion';
@@ -122,6 +123,7 @@ async function getTags(token: string) {
   return {
     settings: rawSettings,
     tags: matchTags(tagList ?? [], token),
+    dateTags: dateTagsFor(token, rawSettings),
   };
 }
 

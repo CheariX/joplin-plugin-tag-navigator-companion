@@ -1,4 +1,4 @@
-import { commonPrefix, compileSettings, createSafeRegex, defTagRegex, defaultSettings, isTagToken, matchTags, parseTags } from '../src/parser';
+import { compileSettings, createSafeRegex, defTagRegex, defaultSettings, isTagToken, matchTags, nextSegment, parentSegment, parseTags } from '../src/parser';
 
 const parse = (text: string, overrides = {}) =>
   [...parseTags(text, compileSettings({ ...defaultSettings, ...overrides }))].sort();
@@ -86,7 +86,7 @@ describe('matchTags', () => {
 
   test('excludes the exact token and respects the limit', () => {
     expect(labels('#project')).toEqual(['#project/alpha']);
-    expect(matchTags(tags, '#j', 1)).toHaveLength(1);
+    expect(matchTags(tags, '#j', false, 1)).toHaveLength(1);
   });
 
   test('is case-insensitive', () => {
@@ -94,10 +94,58 @@ describe('matchTags', () => {
   });
 });
 
-describe('commonPrefix', () => {
-  test('longest shared start', () => {
-    expect(commonPrefix(['#project', '#project/alpha'])).toBe('#project');
-    expect(commonPrefix(['#ab', '@ab'])).toBe('');
-    expect(commonPrefix([])).toBe('');
+describe('matchTags fuzzy', () => {
+  const tags: [string, number][] = [
+    ['@person/john', 3],
+    ['@project/jupiter', 1],
+    ['#people', 9],
+    ['//2026', 4],
+  ];
+  const labels = (token: string) => matchTags(tags, token, true).map(([tag]) => tag);
+
+  test('characters in order, segment starts and same prefix rank first', () => {
+    expect(labels('@pj')).toEqual(['@person/john', '@project/jupiter']);
+    expect(labels('#pj')).toEqual(['@person/john', '@project/jupiter']);
+  });
+
+  test('no match when characters are out of order', () => {
+    expect(labels('@hp')).toEqual([]);
+  });
+
+  test('symbol-only token matches by prefix', () => {
+    expect(labels('//')).toEqual(['//2026']);
+  });
+});
+
+describe('nextSegment', () => {
+  const all = ['#project', '#project/alpha', '#project/alpha/x', '#status', '#status=open'];
+
+  test('completes up to the next level after the typed part', () => {
+    expect(nextSegment('#project/alpha/x', '#pro', all)).toBe('#project/');
+    expect(nextSegment('#project/alpha/x', '#project/', all)).toBe('#project/alpha/');
+  });
+
+  test('a parent tag opens its children', () => {
+    expect(nextSegment('#project', '#pro', all)).toBe('#project/');
+    expect(nextSegment('#status', '#st', all)).toBe('#status=');
+  });
+
+  test('leaf returns the whole tag', () => {
+    expect(nextSegment('#project/alpha/x', '#project/alpha/', all)).toBe('#project/alpha/x');
+  });
+
+  test('keeps the searched segment for substring and fuzzy matches', () => {
+    expect(nextSegment('@person/john', '@jo', [])).toBe('@person/john');
+    expect(nextSegment('@person/john/x', '@pj', [])).toBe('@person/john/');
+  });
+});
+
+describe('parentSegment', () => {
+  test('goes one level up', () => {
+    expect(parentSegment('#project/alpha/')).toBe('#project/');
+    expect(parentSegment('#project/al')).toBe('#project/');
+    expect(parentSegment('#status=op')).toBe('#status=');
+    expect(parentSegment('#project/')).toBeNull();
+    expect(parentSegment('#pro')).toBeNull();
   });
 });

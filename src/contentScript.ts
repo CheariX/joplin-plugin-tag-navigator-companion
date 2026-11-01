@@ -1,6 +1,6 @@
 import { CompletionContext, CompletionResult, acceptCompletion, completionStatus, currentCompletions, selectedCompletion, startCompletion } from '@codemirror/autocomplete';
 import { syntaxTree } from '@codemirror/language';
-import { Prec } from '@codemirror/state';
+import { EditorState, Prec } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { ContentScriptContext, MarkdownEditorContentScriptModule } from 'api/types';
 import type { DateTag } from './dateTags';
@@ -50,10 +50,18 @@ function inCode(context: CompletionContext): boolean {
   return false;
 }
 
+// The token around the cursor: text before it is matched, the whole token is replaced.
+function tokenAt(state: EditorState, pos = state.selection.main.head): { from: number; to: number; text: string } {
+  const line = state.doc.lineAt(pos);
+  const text = /\S*$/.exec(line.text.slice(0, pos - line.from))[0];
+  const rest = /^\S*/.exec(line.text.slice(pos - line.from))[0];
+  return { from: pos - text.length, to: pos + rest.length, text };
+}
+
 function completeTags(pluginContext: ContentScriptContext) {
   return async (context: CompletionContext): Promise<CompletionResult | null> => {
-    const match = context.matchBefore(/\S+/);
-    if (!match || !isTagToken(match.text)) {
+    const match = tokenAt(context.state, context.pos);
+    if (!isTagToken(match.text)) {
       return null;
     }
     const response = await pluginContext.postMessage({ name: 'getTags', token: match.text });
@@ -87,19 +95,12 @@ function completeTags(pluginContext: ContentScriptContext) {
     ]
       .filter((option, i, all) => all.findIndex((other) => other.label === option.label) === i)
       .map((option) => ({ ...option, type: 'itag' }));
-    return options.length ? { from: match.from, options, filter: false } : null;
+    return options.length ? { from: match.from, to: match.to, options, filter: false } : null;
   };
 }
 
-function tokenBefore(view: EditorView): { from: number; to: number; text: string } {
-  const to = view.state.selection.main.head;
-  const line = view.state.doc.lineAt(to);
-  const text = /\S*$/.exec(line.text.slice(0, to - line.from))[0];
-  return { from: to - text.length, to, text };
-}
-
 function replaceToken(view: EditorView, insert: string): boolean {
-  const { from, to } = tokenBefore(view);
+  const { from, to } = tokenAt(view.state);
   view.dispatch({ changes: { from, to, insert }, selection: { anchor: from + insert.length }, userEvent: 'input.complete' });
   startCompletion(view);
   return true;
@@ -115,7 +116,7 @@ function tab(view: EditorView): boolean {
     return replaceToken(view, selected.label);
   }
   const others = currentCompletions(view.state).map((option) => option.label);
-  const segment = nextSegment(selected.label, tokenBefore(view).text, others);
+  const segment = nextSegment(selected.label, tokenAt(view.state).text, others);
   return segment === selected.label ? acceptCompletion(view) : replaceToken(view, segment);
 }
 
@@ -123,13 +124,14 @@ function shiftTab(view: EditorView): boolean {
   if (completionStatus(view.state) !== 'active') {
     return false;
   }
-  const parent = parentSegment(tokenBefore(view).text);
+  const parent = parentSegment(tokenAt(view.state).text);
   return parent ? replaceToken(view, parent) : true;
 }
 
-// Typing a space right after '#tag/' or '#tag=' removes the separator.
+// Typing a space right after '#tag/' or '#tag=' at the end of a token removes the separator.
 const dropDanglingSeparator = EditorView.inputHandler.of((view, from, to, text) => {
-  if (text !== ' ' || from !== to || from !== view.state.selection.main.head || !hasDanglingSeparator(tokenBefore(view).text)) {
+  const token = tokenAt(view.state);
+  if (text !== ' ' || from !== to || from !== token.to || !hasDanglingSeparator(token.text)) {
     return false;
   }
   view.dispatch({ changes: { from: from - 1, to, insert: ' ' }, selection: { anchor: from }, userEvent: 'input.type' });

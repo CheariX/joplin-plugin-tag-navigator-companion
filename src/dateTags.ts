@@ -36,7 +36,16 @@ function splitDateTag(token: string, name: string): [string, string] {
 }
 
 // Date tags (#today, #week, #month, optionally with +n/-n) whose name the token could complete.
-export function dateTagsFor(token: string, s: RawTagSettings, now = new Date()): DateTag[] {
+// The weekday helps to pick the right day, e.g. 'today+3 · Mo'.
+function weekday(date: Date, locale: string): string {
+  try {
+    return ' · ' + new Intl.DateTimeFormat(locale.replace('_', '-'), { weekday: 'short' }).format(date).replace(/\.$/, '');
+  } catch {
+    return '';
+  }
+}
+
+export function dateTagsFor(token: string, s: RawTagSettings, locale: string, now = new Date()): DateTag[] {
   token = token.toLocaleLowerCase();
   const result: DateTag[] = [];
   for (const [nameKey, formatKey, shift] of kinds) {
@@ -47,7 +56,7 @@ export function dateTagsFor(token: string, s: RawTagSettings, now = new Date()):
     shift(date, parseInt(offset || '0'), s);
     try {
       const pattern = String(s[formatKey]) || String(defaultSettings[formatKey]);
-      result.push({ tag: head + name + offset, date: head + format(date, pattern), label: name.replace(/^[^\p{L}\p{N}]+/u, '') + offset });
+      result.push({ tag: head + name + offset, date: head + format(date, pattern), label: name.replace(/^[^\p{L}\p{N}]+/u, '') + offset + (nameKey === 'monthTag' ? '' : weekday(date, locale)) });
     } catch {
       // Invalid date format in Tag Navigator's settings
     }

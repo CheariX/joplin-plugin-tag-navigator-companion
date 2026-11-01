@@ -15,6 +15,7 @@ let tagNavigatorActive = false;
 let lastUpdate = 0;
 let stale = true;
 let running: Promise<void> | null = null;
+let locale = 'en';
 
 async function readSettings(): Promise<RawTagSettings | null> {
   const keys = Object.keys(defaultSettings) as (keyof RawTagSettings)[];
@@ -123,12 +124,13 @@ async function getTags(token: string) {
   return {
     settings: rawSettings,
     tags: matchTags(tagList ?? [], token),
-    dateTags: dateTagsFor(token, rawSettings),
+    dateTags: dateTagsFor(token, rawSettings, locale),
   };
 }
 
 joplin.plugins.register({
   onStart: async function() {
+    locale = String(await joplin.settings.globalValue('locale') || locale);
     await joplin.settings.registerSection('tagNavigatorCompanion', {
       label: 'Tag Navigator Companion',
       iconName: 'fas fa-tags',

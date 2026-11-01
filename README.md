@@ -8,7 +8,7 @@ Autocompletion for inline tags in the Joplin Markdown editor (CodeMirror 6), bui
 - Tags are found with the same settings as Tag Navigator (tag regex, exclude regex, code blocks, nested tags, HTML notes). Changes to those settings apply after switching notes, after a sync, at most a minute later, or immediately via *Reload tags now* in the plugin settings.
 - Works with any tag prefix your regex allows, e.g. `#tag`, `@person`, `!status`, `//2026`. Suggestions open when a word starts with a symbol (not a letter or digit).
 - Fuzzy search: the typed characters only need to appear in order, e.g. `@pj` finds `@person/john`. Same prefix, consecutive characters and segment starts rank first, then the number of notes.
-- Date tags: Tag Navigator's date tags (`#today`, `#week`, `#month`) are suggested like other tags, also at the end of another tag (`#due//today+7`, `#due#today`). `Tab` on one inserts its name and keeps the list open with the resolved date (e.g. `#2026-10-31`) and an offset entry (`#today+`; type e.g. `3`). `Tab` on the date inserts it. A space instead keeps the name, which Tag Navigator resolves to the current date every day.
+- Date tags: Tag Navigator's date tags (`#today`, `#week`, `#month`) are suggested like other tags, also at the end of another tag (`#due//today+7`, `#due#today`). `Tab` on one inserts its name and keeps the list open with the resolved date and its weekday (e.g. `#2026-10-31`, `Sat`) and an offset entry (`#today+`; type e.g. `3`). `Tab` on the date inserts it. A space instead keeps the name, which Tag Navigator resolves to the current date every day.
 - Joplin's native tags are neither read nor written.
 
 ## Keys

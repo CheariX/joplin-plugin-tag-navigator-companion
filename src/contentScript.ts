@@ -138,6 +138,13 @@ const dropDanglingSeparator = EditorView.inputHandler.of((view, from, to, text) 
   return true;
 });
 
+// CodeMirror only opens completions while typing, so also open them when deleting inside a tag.
+const completeOnDelete = EditorView.updateListener.of((update) => {
+  if (update.transactions.some((tr) => tr.isUserEvent('delete')) && !completionStatus(update.state) && isTagToken(tokenAt(update.state).text)) {
+    queueMicrotask(() => startCompletion(update.view));
+  }
+});
+
 export default (pluginContext: ContentScriptContext): MarkdownEditorContentScriptModule => ({
   plugin: (editorControl) => {
     if (!editorControl.cm6 || !editorControl.joplinExtensions) {
@@ -148,6 +155,7 @@ export default (pluginContext: ContentScriptContext): MarkdownEditorContentScrip
       Prec.highest(keymap.of([{ key: 'Tab', run: tab }, { key: 'Shift-Tab', run: shiftTab }])),
       optionTheme,
       dropDanglingSeparator,
+      completeOnDelete,
     ]);
   },
 });

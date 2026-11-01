@@ -22,18 +22,32 @@ const kinds: [keyof RawTagSettings, keyof RawTagSettings, Shift][] = [
   }],
 ];
 
+// Splits a token into the text before a date tag and the date tag (or the start of its name),
+// so that suffixes like '#due#today+7' or '#due//to' work, too.
+function splitDateTag(token: string, name: string): [string, string] {
+  const minLength = name.length - name.replace(/^[^\p{L}\p{N}]+/u, '').length + 1;
+  for (let i = 0; i < token.length; i++) {
+    const tail = token.slice(i);
+    if ((tail.length >= minLength && name.startsWith(tail)) || (tail.startsWith(name) && /^([+-]\d{0,4})?$/.test(tail.slice(name.length)))) {
+      return [token.slice(0, i), tail];
+    }
+  }
+  return ['', token];
+}
+
 // Date tags (#today, #week, #month, optionally with +n/-n) whose name the token could complete.
 export function dateTagsFor(token: string, s: RawTagSettings, now = new Date()): DateTag[] {
   token = token.toLocaleLowerCase();
   const result: DateTag[] = [];
   for (const [nameKey, formatKey, shift] of kinds) {
     const name = String(s[nameKey]).trim().toLocaleLowerCase() || String(defaultSettings[nameKey]);
-    const offset = token.startsWith(name) ? /^[+-]\d{1,4}$/.exec(token.slice(name.length))?.[0] ?? '' : '';
+    const [head, tail] = splitDateTag(token, name);
+    const offset = tail.startsWith(name) ? /^[+-]\d{1,4}$/.exec(tail.slice(name.length))?.[0] ?? '' : '';
     const date = new Date(now);
     shift(date, parseInt(offset || '0'), s);
     try {
       const pattern = String(s[formatKey]) || String(defaultSettings[formatKey]);
-      result.push({ tag: name + offset, date: format(date, pattern), label: name.replace(/^[^\p{L}\p{N}]+/u, '') + offset });
+      result.push({ tag: head + name + offset, date: head + format(date, pattern), label: name.replace(/^[^\p{L}\p{N}]+/u, '') + offset });
     } catch {
       // Invalid date format in Tag Navigator's settings
     }

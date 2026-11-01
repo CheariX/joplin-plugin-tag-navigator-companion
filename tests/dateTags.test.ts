@@ -29,6 +29,15 @@ describe('dateTagsFor', () => {
     expect(tags('#w', custom)[1].date).toBe('#2026-10-26');
   });
 
+  test('date tags as suffix of another tag', () => {
+    const slashes = { todayTag: '//today', dateFormat: '//yyyy/MM/dd' };
+    expect(tags('#due//to', slashes)[0]).toEqual({ tag: '#due//today', date: '#due//2026/10/30', label: 'today' });
+    expect(tags('#due//today+7', slashes)[0]).toEqual({ tag: '#due//today+7', date: '#due//2026/11/06', label: 'today+7' });
+    expect(tags('#due#today+7')[0]).toEqual({ tag: '#due#today+7', date: '#due#2026-11-06', label: 'today+7' });
+    expect(tags('#due#mo')[2].tag).toBe('#due#month');
+    expect(tags('#due/', slashes)[0].tag).toBe('//today');
+  });
+
   test('empty settings fall back, invalid formats are skipped', () => {
     expect(tags('#t', { todayTag: '', dateFormat: '' })[0].date).toBe('#2026-10-30');
     expect(tags('#t', { dateFormat: 'yyyy-MM-dd-invalid-q' }).map((d) => d.label)).toEqual(['week', 'month']);

@@ -2,7 +2,7 @@
 	"manifest_version": 1,
 	"id": "joplin.plugin.tag-navigator-companion",
 	"app_min_version": "3.1",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"name": "Tag Navigator Companion",
 	"description": "Autocompletion for inline tags, using the settings of the Inline Tag Navigator plugin.",
 	"author": "Christian Mainka",

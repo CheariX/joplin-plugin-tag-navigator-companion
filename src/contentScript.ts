@@ -4,11 +4,12 @@ import { EditorState, Prec } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { ContentScriptContext, MarkdownEditorContentScriptModule } from 'api/types';
 import type { DateTag } from './dateTags';
-import { RawTagSettings, TagCount, compileSettings, hasDanglingSeparator, isTagToken, matchTags, nextSegment, parentSegment, parseTags } from './parser';
+import { Rankable, hasDanglingSeparator, isTagToken, matchTags, nextSegment, parentSegment } from './fuzzy';
+import { RawTagSettings, compileSettings, parseTags } from './parser';
 
 interface TagsResponse {
   settings: RawTagSettings;
-  tags: TagCount[];
+  tags: Rankable[];
   dateTags: DateTag[];
 }
 
@@ -36,7 +37,7 @@ function isTagsResponse(response: any): response is TagsResponse {
     && typeof response.settings?.tagRegex === 'string'
     && typeof response.settings?.excludeRegex === 'string'
     && Array.isArray(response.tags)
-    && response.tags.every((tag: unknown) => Array.isArray(tag) && typeof tag[0] === 'string' && typeof tag[1] === 'number')
+    && response.tags.every((tag: any) => typeof tag?.label === 'string' && typeof tag.count === 'number')
     && Array.isArray(response.dateTags)
     && response.dateTags.every((d: any) => typeof d?.tag === 'string' && typeof d.date === 'string' && typeof d.label === 'string');
 }
@@ -73,7 +74,7 @@ function completeTags(pluginContext: ContentScriptContext) {
       return null;
     }
 
-    const counts = new Map(response.tags);
+    const counts = new Map(response.tags.map(({ label, count }) => [label, count]));
     for (const tag of parseTags(context.state.doc.toString(), settings)) {
       if (!counts.has(tag)) {
         counts.set(tag, 0);
@@ -88,7 +89,7 @@ function completeTags(pluginContext: ContentScriptContext) {
     const options = [
       ...(date ? [{ label: date.date, detail: date.label }] : []),
       ...(dateNames.has(token) ? [{ label: `${token}+`, detail: 'offset' }] : []),
-      ...matchTags([...counts], token).map(([label, count]) => ({
+      ...matchTags([...counts].map(([label, count]) => ({ label, count })), token).map(({ label, count }) => ({
         label,
         detail: dateNames.has(label) ? 'date tag' : count ? String(count) : undefined,
       })),

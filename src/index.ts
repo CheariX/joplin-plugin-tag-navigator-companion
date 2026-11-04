@@ -1,7 +1,8 @@
 import joplin from 'api';
 import { ContentScriptType, SettingItemType } from 'api/types';
 import { dateTagsFor } from './dateTags';
-import { RawTagSettings, TagCount, TagSettings, compileSettings, defaultSettings, isTagToken, matchTags, parseTags } from './parser';
+import { Rankable, isTagToken, matchTags } from './fuzzy';
+import { RawTagSettings, TagSettings, compileSettings, defaultSettings, parseTags } from './parser';
 
 const contentScriptId = 'tagNavigatorCompanion';
 const tagNavigatorPrefix = 'plugin-joplin.plugin.alondmnt.tag-navigator.itags.';
@@ -10,7 +11,7 @@ const maxAge = 60 * 1000;
 const notes = new Map<string, { updated: number; tags: Set<string> }>();
 let rawSettings: RawTagSettings = defaultSettings;
 let settings: TagSettings = compileSettings(defaultSettings);
-let tagList: TagCount[] | null = null;
+let tagList: Rankable[] | null = null;
 let tagNavigatorActive = false;
 let lastUpdate = 0;
 let stale = true;
@@ -35,14 +36,14 @@ async function readSettings(): Promise<RawTagSettings | null> {
   return raw as unknown as RawTagSettings;
 }
 
-function countTags(): TagCount[] {
+function countTags(): Rankable[] {
   const counts = new Map<string, number>();
   for (const { tags } of notes.values()) {
     for (const tag of tags) {
       counts.set(tag, (counts.get(tag) ?? 0) + 1);
     }
   }
-  return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  return [...counts].map(([label, count]) => ({ label, count }));
 }
 
 async function update(): Promise<void> {
@@ -123,7 +124,7 @@ async function getTags(token: string) {
   }
   return {
     settings: rawSettings,
-    tags: matchTags(tagList ?? [], token),
+    tags: matchTags(tagList ?? [], token).map(({ label, count }) => ({ label, count })),
     dateTags: dateTagsFor(token, rawSettings, locale),
   };
 }

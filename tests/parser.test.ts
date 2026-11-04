@@ -1,4 +1,4 @@
-import { compileSettings, createSafeRegex, defTagRegex, defaultSettings, hasDanglingSeparator, isTagToken, matchTags, nextSegment, parentSegment, parseTags } from '../src/parser';
+import { compileSettings, createSafeRegex, defTagRegex, defaultSettings, parseTags } from '../src/parser';
 
 const parse = (text: string, overrides = {}) =>
   [...parseTags(text, compileSettings({ ...defaultSettings, ...overrides }))].sort();
@@ -49,86 +49,5 @@ describe('createSafeRegex', () => {
     expect(createSafeRegex('([', defTagRegex)).toBe(defTagRegex);
     expect(createSafeRegex('(a+)+', null)).toBeNull();
     expect(createSafeRegex('#\\w+', null)?.flags).toBe('g');
-  });
-});
-
-describe('isTagToken', () => {
-  test('requires a leading symbol and two characters', () => {
-    expect(isTagToken('#a')).toBe(true);
-    expect(isTagToken('//')).toBe(true);
-    expect(isTagToken('#')).toBe(false);
-    expect(isTagToken('john')).toBe(false);
-  });
-});
-
-describe('matchTags', () => {
-  const tags: [string, number][] = [
-    ['@person/john', 3],
-    ['@project/jupiter', 1],
-    ['#people', 9],
-    ['//2026', 4],
-  ];
-  const labels = (token: string) => matchTags(tags, token).map(([tag]) => tag);
-
-  test('characters in order, segment starts and same prefix rank first', () => {
-    expect(labels('@pj')).toEqual(['@person/john', '@project/jupiter']);
-    expect(labels('#pj')).toEqual(['@person/john', '@project/jupiter']);
-  });
-
-  test('no match when characters are out of order', () => {
-    expect(labels('@hp')).toEqual([]);
-  });
-
-  test('symbol-only token matches by prefix', () => {
-    expect(labels('//')).toEqual(['//2026']);
-  });
-
-  test('excludes the exact token, respects the limit, ignores case', () => {
-    expect(labels('@person/john')).toEqual([]);
-    expect(labels('@PJ')).toEqual(['@person/john', '@project/jupiter']);
-    expect(matchTags(tags, '@p', 1)).toHaveLength(1);
-  });
-});
-
-describe('nextSegment', () => {
-  const all = ['#project', '#project/alpha', '#project/alpha/x', '#status', '#status=open'];
-
-  test('completes up to the next level after the typed part', () => {
-    expect(nextSegment('#project/alpha/x', '#pro', all)).toBe('#project/');
-    expect(nextSegment('#project/alpha/x', '#project/', all)).toBe('#project/alpha/');
-  });
-
-  test('a parent tag opens its children', () => {
-    expect(nextSegment('#project', '#pro', all)).toBe('#project/');
-    expect(nextSegment('#status', '#st', all)).toBe('#status=');
-  });
-
-  test('leaf returns the whole tag', () => {
-    expect(nextSegment('#project/alpha/x', '#project/alpha/', all)).toBe('#project/alpha/x');
-  });
-
-  test('keeps the searched segment for fuzzy matches', () => {
-    expect(nextSegment('@person/john', '@jo', [])).toBe('@person/john');
-    expect(nextSegment('@person/john/x', '@pj', [])).toBe('@person/john/');
-  });
-});
-
-describe('parentSegment', () => {
-  test('goes one level up', () => {
-    expect(parentSegment('#project/alpha/')).toBe('#project/');
-    expect(parentSegment('#project/al')).toBe('#project/');
-    expect(parentSegment('#status=op')).toBe('#status=');
-    expect(parentSegment('#project/')).toBeNull();
-    expect(parentSegment('#pro')).toBeNull();
-  });
-});
-
-describe('hasDanglingSeparator', () => {
-  test('tag ending in a separator', () => {
-    expect(hasDanglingSeparator('#hello/')).toBe(true);
-    expect(hasDanglingSeparator('#status=')).toBe(true);
-    expect(hasDanglingSeparator('#hello')).toBe(false);
-    expect(hasDanglingSeparator('//')).toBe(false);
-    expect(hasDanglingSeparator('word/')).toBe(false);
   });
 });

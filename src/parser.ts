@@ -1,10 +1,6 @@
+import { MAX_TOKEN_LENGTH } from './fuzzy';
+
 export const defTagRegex = /(?<=^|\s)#([^\s#'",.()\[\]:;\?\\]+)/g;
-export const maxTagLength = 100;
-export const maxOptions = 50;
-
-const leadingSymbols = /^[^\p{L}\p{N}]+/u;
-
-export type TagCount = [string, number];
 
 export interface RawTagSettings {
   tagRegex: string;
@@ -108,83 +104,11 @@ export function parseTags(text: string, settings: TagSettings): Set<string> {
       line = line.replace(/`[^`]*`/g, '``');
     }
     for (const tag of line.match(settings.tagRegex) ?? []) {
-      if (tag.length > maxTagLength || (settings.excludeRegex && tag.match(settings.excludeRegex))) {
+      if (tag.length > MAX_TOKEN_LENGTH || (settings.excludeRegex && tag.match(settings.excludeRegex))) {
         continue;
       }
       addTag(tags, tag, settings);
     }
   }
   return tags;
-}
-
-export function isTagToken(token: string): boolean {
-  return token.length >= 2 && token.length <= maxTagLength && leadingSymbols.test(token);
-}
-
-// Positions of the characters of `core` in `tag`, matched left to right.
-function subsequence(tag: string, core: string): number[] | null {
-  const positions: number[] = [];
-  for (const char of core) {
-    const i = tag.indexOf(char, (positions[positions.length - 1] ?? -1) + 1);
-    if (i < 0) {
-      return null;
-    }
-    positions.push(i);
-  }
-  return positions;
-}
-
-// Fuzzy score, lower is better, null means no match. Rewards the same prefix symbols,
-// consecutive characters and characters at segment starts.
-function rank(tag: string, token: string, core: string): number | null {
-  const positions = subsequence(tag, core);
-  if (!positions || !core) {
-    return tag.startsWith(token) ? 0 : null;
-  }
-  let score = tag.startsWith(token.slice(0, token.length - core.length)) ? 3 : 0;
-  positions.forEach((i, n) => {
-    score += (i === positions[n - 1] + 1 ? 2 : 0) + (/[^\p{L}\p{N}]/u.test(tag[i - 1] ?? '/') ? 3 : 0);
-  });
-  return -score;
-}
-
-export function matchTags(tags: TagCount[], token: string, limit = maxOptions): TagCount[] {
-  token = token.toLocaleLowerCase();
-  const core = token.replace(leadingSymbols, '');
-  const ranked: [number, TagCount][] = [];
-  for (const entry of tags) {
-    const r = entry[0] === token ? null : rank(entry[0], token, core);
-    if (r !== null) {
-      ranked.push([r, entry]);
-    }
-  }
-  return ranked
-    .sort((a, b) => a[0] - b[0] || b[1][1] - a[1][1] || a[1][0].localeCompare(b[1][0]))
-    .slice(0, limit)
-    .map(([, entry]) => entry);
-}
-
-// Tag up to the next '/' or '=' after the typed part, or the whole tag if it has no deeper level.
-export function nextSegment(tag: string, token: string, others: string[]): string {
-  token = token.toLocaleLowerCase();
-  const core = token.replace(leadingSymbols, '');
-  const matchEnd = tag.startsWith(token) ? token.length : (subsequence(tag, core)?.pop() ?? tag.length - 1) + 1;
-  const end = tag.slice(matchEnd).search(/[/=]/);
-  if (end >= 0) {
-    return tag.slice(0, matchEnd + end + 1);
-  }
-  const child = others.find((other) => other.startsWith(tag + '/') || other.startsWith(tag + '='));
-  return child ? child.slice(0, tag.length + 1) : tag;
-}
-
-// A tag ending in '/' or '=' (e.g. left over after Tab), which Tag Navigator would trim anyway.
-export function hasDanglingSeparator(token: string): boolean {
-  return isTagToken(token) && /[\p{L}\p{N}][/=]$/u.test(token);
-}
-
-export function parentSegment(token: string): string | null {
-  const trimmed = token.replace(/[/=]$/, '');
-  const cut = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('='));
-  const parent = trimmed.slice(0, cut + 1);
-  return cut > 0 && isTagToken(parent) ? parent : null;
 }

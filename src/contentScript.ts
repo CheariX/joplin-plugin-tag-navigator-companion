@@ -4,7 +4,7 @@ import { EditorState, Prec, Text } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { ContentScriptContext, MarkdownEditorContentScriptModule } from 'api/types';
 import { dateTagsFor } from './dateTags';
-import { Rankable, TagMatch, fitsKnownPrefix, hasDanglingSeparator, isTagToken, leadingSymbols, matchRanges, matchTags, nextSegment, parentSegment } from './fuzzy';
+import { DEFAULT_SEPARATORS, Rankable, TagMatch, fitsKnownPrefix, hasDanglingSeparator, isTagToken, leadingSymbols, matchRanges, matchTags, nextSegment, parentSegment } from './fuzzy';
 import { RawTagSettings, TagSettings, compileSettings, defTagRegex, parseTags } from './parser';
 
 interface TagsResponse {
@@ -95,13 +95,19 @@ function tokenAt(state: EditorState, pos = state.selection.main.head): { from: n
   return { from: pos - text.length, to: pos + rest.length, text };
 }
 
-// A tag-like token outside code whose prefix is used by a known tag or a tag of this note.
+// A tag-like token whose prefix is used by a known tag or a tag of this note.
+function knownTag(state: EditorState, token: string): boolean {
+  return isTagToken(token) && !!cache
+    && (fitsKnownPrefix(token, cache.prefixes) || fitsKnownPrefix(token, noteTags(state.doc, cache.settings).prefixes));
+}
+
+// Worth asking for suggestions: any tag-like token until the tags are known, then known tags outside code.
 function wanted(context: CompletionContext, token: string): boolean {
-  if (!isTagToken(token) || !cache) {
-    return isTagToken(token);
-  }
-  return (fitsKnownPrefix(token, cache.prefixes) || fitsKnownPrefix(token, noteTags(context.state.doc, cache.settings).prefixes))
-    && !(cache.settings.ignoreCodeBlocks && inCode(context));
+  return cache ? knownTag(context.state, token) && !(cache.settings.ignoreCodeBlocks && inCode(context)) : isTagToken(token);
+}
+
+function separators(): string {
+  return cache ? '/' + cache.raw.valueDelim : DEFAULT_SEPARATORS;
 }
 
 function completeTags(pluginContext: ContentScriptContext) {
@@ -159,32 +165,41 @@ function replaceToken(view: EditorView, insert: string): boolean {
   return true;
 }
 
+// Tab completes the next level of a tag suggested by any source, and leaves other suggestions alone.
 function tab(view: EditorView): boolean {
   const selected = completionStatus(view.state) === 'active' && selectedCompletion(view.state);
   if (!selected) {
     return false;
   }
   // A date tag name works like a level: Tab inserts it and offers its date and offset.
-  if (dateNames.has(selected.label.toLocaleLowerCase().replace(/\+$/, ''))) {
+  if (selected.type === 'itag' && dateNames.has(selected.label.toLocaleLowerCase().replace(/\+$/, ''))) {
     return replaceToken(view, selected.label);
   }
+  const token = tokenAt(view.state).text;
+  if (selected.apply || !isTagToken(selected.label) || !fitsKnownPrefix(token, [leadingSymbols(selected.label)])) {
+    return false;
+  }
   const others = currentCompletions(view.state).map((option) => option.label);
-  const segment = nextSegment(selected.label, tokenAt(view.state).text, others);
-  return segment === selected.label ? acceptCompletion(view) : replaceToken(view, segment);
+  const segment = nextSegment(selected.label, token, others, separators());
+  if (segment.length < selected.label.length) {
+    return replaceToken(view, segment);
+  }
+  // Within the first moments after the list opens, CodeMirror refuses; Joplin must not indent then.
+  acceptCompletion(view);
+  return true;
 }
 
 function shiftTab(view: EditorView): boolean {
-  if (completionStatus(view.state) !== 'active') {
-    return false;
-  }
-  const parent = parentSegment(tokenAt(view.state).text);
-  return parent ? replaceToken(view, parent) : true;
+  const token = tokenAt(view.state).text;
+  const parent = completionStatus(view.state) === 'active' && knownTag(view.state, token) && parentSegment(token, separators());
+  return parent ? replaceToken(view, parent) : false;
 }
 
-// Typing a space right after '#tag/' or '#tag=' at the end of a token removes the separator.
+// Typing a space right after a level separator left at the end of a tag ('#tag/') removes the separator.
 const dropDanglingSeparator = EditorView.inputHandler.of((view, from, to, text) => {
   const token = tokenAt(view.state);
-  if (text !== ' ' || from !== to || from !== token.to || !hasDanglingSeparator(token.text)) {
+  if (text !== ' ' || from !== to || from !== token.to || completionStatus(view.state) !== 'active'
+    || !knownTag(view.state, token.text) || !hasDanglingSeparator(token.text, separators())) {
     return false;
   }
   view.dispatch({ changes: { from: from - 1, to, insert: ' ' }, selection: { anchor: from }, userEvent: 'input.type' });
@@ -193,7 +208,7 @@ const dropDanglingSeparator = EditorView.inputHandler.of((view, from, to, text) 
 
 // CodeMirror only opens completions while typing, so also open them when deleting inside a tag.
 const completeOnDelete = EditorView.updateListener.of((update) => {
-  if (update.transactions.some((tr) => tr.isUserEvent('delete')) && !completionStatus(update.state) && isTagToken(tokenAt(update.state).text)) {
+  if (update.transactions.some((tr) => tr.isUserEvent('delete')) && !completionStatus(update.state) && knownTag(update.state, tokenAt(update.state).text)) {
     queueMicrotask(() => startCompletion(update.view));
   }
 });

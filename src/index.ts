@@ -11,6 +11,9 @@ const notes = new Map<string, { updated: number; tags: Map<string, string> }>();
 let rawSettings: RawTagSettings = defaultSettings;
 let settings: TagSettings = compileSettings(defaultSettings);
 let tagList: Rankable[] | null = null;
+// Position in Joplin's change feed up to which `notes` is current; null means a full scan is due.
+let cursor: string | null = null;
+let rescan = false;
 let version = 0;
 let tagNavigatorActive = false;
 let lastUpdate = 0;
@@ -55,22 +58,25 @@ function countTags(): Rankable[] {
   return [...counts].map(([key, count]) => ({ label: best.get(key), count }));
 }
 
-async function update(): Promise<void> {
-  const raw = await readSettings();
-  tagNavigatorActive = !!raw;
-  if (!raw) {
-    notes.clear();
-    tagList = [];
-    lastUpdate = Date.now();
-    return;
-  }
-  const settingsChanged = JSON.stringify(raw) !== JSON.stringify(rawSettings);
-  if (settingsChanged) {
-    notes.clear();
-    rawSettings = raw;
-    settings = compileSettings(raw);
-  }
+function forget(): void {
+  notes.clear();
+  cursor = null;
+}
 
+function indexed(note: any, raw: RawTagSettings): boolean {
+  return !note.deleted_time && !note.is_conflict && !(raw.ignoreHtmlNotes && note.markup_language === 2);
+}
+
+async function readNote(id: string, raw: RawTagSettings): Promise<void> {
+  const note = await joplin.data.get(['notes', id], { fields: ['updated_time', 'body', 'deleted_time', 'is_conflict', 'markup_language'] });
+  if (indexed(note, raw)) {
+    notes.set(id, { updated: note.updated_time, tags: parseTags(note.body ?? '', settings) });
+  } else {
+    notes.delete(id);
+  }
+}
+
+async function scanAll(raw: RawTagSettings): Promise<void> {
   const seen = new Set<string>();
   const changed: string[] = [];
   for (let page = 1, hasMore = true; hasMore; page++) {
@@ -82,7 +88,7 @@ async function update(): Promise<void> {
     });
     hasMore = result.has_more;
     for (const note of result.items) {
-      if (note.deleted_time || note.is_conflict || (raw.ignoreHtmlNotes && note.markup_language === 2)) {
+      if (!indexed(note, raw)) {
         continue;
       }
       seen.add(note.id);
@@ -91,15 +97,64 @@ async function update(): Promise<void> {
       }
     }
   }
-
   for (const id of notes.keys()) {
     if (!seen.has(id)) {
       notes.delete(id);
     }
   }
   for (const id of changed) {
-    const note = await joplin.data.get(['notes', id], { fields: ['updated_time', 'body'] });
-    notes.set(id, { updated: note.updated_time, tags: parseTags(note.body ?? '', settings) });
+    await readNote(id, raw);
+  }
+}
+
+// Reads only the notes changed since `from`, and returns the new position in the change feed.
+async function readChanges(from: string, raw: RawTagSettings): Promise<string> {
+  const deleted = new Map<string, boolean>();
+  let at = from;
+  for (let hasMore = true; hasMore;) {
+    const result = await joplin.data.get(['events'], { cursor: at });
+    for (const event of result.items) {
+      if (event.item_type === 1) {
+        deleted.set(event.item_id, event.type === 3);
+      }
+    }
+    at = String(result.cursor ?? at);
+    hasMore = result.has_more;
+  }
+  for (const [id, gone] of deleted) {
+    if (gone) {
+      notes.delete(id);
+    } else {
+      await readNote(id, raw);
+    }
+  }
+  return at;
+}
+
+async function update(): Promise<void> {
+  const raw = await readSettings();
+  tagNavigatorActive = !!raw;
+  if (!raw) {
+    forget();
+    tagList = [];
+    lastUpdate = Date.now();
+    return;
+  }
+  const settingsChanged = JSON.stringify(raw) !== JSON.stringify(rawSettings);
+  if (settingsChanged || rescan) {
+    forget();
+    rescan = false;
+    rawSettings = raw;
+    settings = compileSettings(raw);
+  }
+
+  if (cursor === null) {
+    // Take the position before scanning, so changes during the scan are read next time.
+    const start = String((await joplin.data.get(['events'])).cursor);
+    await scanAll(raw);
+    cursor = start;
+  } else {
+    cursor = await readChanges(cursor, raw);
   }
 
   const list = countTags();
@@ -121,6 +176,7 @@ function refresh(): void {
   running = update()
     .catch((error) => {
       stale = true;
+      cursor = null;
       console.warn('Tag Navigator Companion: update failed', error);
     })
     .finally(() => {
@@ -170,7 +226,7 @@ joplin.plugins.register({
     await joplin.settings.onChange(async ({ keys }) => {
       if (keys.includes('reload') && await joplin.settings.value('reload')) {
         await joplin.settings.setValue('reload', false);
-        notes.clear();
+        rescan = true;
         stale = true;
         refresh();
       }

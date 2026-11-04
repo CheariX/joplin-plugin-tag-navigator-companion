@@ -6,17 +6,26 @@ Autocompletion for inline tags in the Joplin Markdown editor (CodeMirror 6), bui
 
 - Requires Inline Tag Navigator: without it (or while it is disabled) this plugin does nothing.
 - Tags are found with the same settings as Tag Navigator (tag regex, exclude regex, code blocks, nested tags, HTML notes). Changes to those settings apply after switching notes, after a sync, at most a minute later, or immediately via *Reload tags now* in the plugin settings.
-- Works with any tag prefix your regex allows, e.g. `#tag`, `@person`, `!status`, `//2026`. Suggestions open when a word starts with a symbol (not a letter or digit).
-- Fuzzy search: the typed characters only need to appear in order, e.g. `@pj` finds `@person/john`. Same prefix, consecutive characters and segment starts rank first, then the number of notes.
+- Works with any tag prefix your regex allows, e.g. `#tag`, `@person`, `!status`, `//2026`. Suggestions open when a word starts with a symbol (not a letter or digit) that a known tag also starts with, so paths (`./src`), emphasis (`**b`) or brackets (`(s`) open nothing.
+- Fuzzy search: the typed characters only need to appear in order, e.g. `@pj` finds `@person/john`; matched characters are underlined. Of all ways to match, the best one counts: same prefix, consecutive characters and segment starts rank first (`#web` prefers `#project=website` to `#network`), then the number of notes, with tags of the open note first. Up to 100 suggestions are shown.
 - Date tags: Tag Navigator's date tags (`#today`, `#week`, `#month`) are suggested like other tags, also at the end of another tag (`#due//today+7`, `#due#today`). `Tab` on one inserts its name and keeps the list open with the resolved date and its weekday (e.g. `#2026-10-31`, `Sat`) and an offset entry (`#today+`; type e.g. `3`). `Tab` on the date inserts it. A space instead keeps the name, which Tag Navigator resolves to the current date every day.
 - Joplin's native tags are neither read nor written.
 
 ## Keys
 
-- `Tab` completes the selected suggestion up to the next level (`#pro` → `#project/` → `#project/alpha`) and keeps the list open; on the last level it inserts the tag.
-- `Shift-Tab` goes one level up (`#project/alpha/` → `#project/`).
+- `Tab` completes the selected suggestion up to the next level (`#pro` → `#project/` → `#project/alpha`) and keeps the list open; on the last level it inserts the tag. Levels are separated by `/` and Tag Navigator's value delimiter (`=` by default).
+- `Shift-Tab` goes one level up (`#project/alpha/` → `#project/`). At the top level it does nothing special and the key works as usual.
+- A space right after a level separator (`#project/` + space) removes the separator.
 - `Enter` inserts the whole selected tag, `Esc` closes the list.
-- Without an open list, `Tab` and `Shift-Tab` indent as usual.
+- Without an open list, `Tab` and `Shift-Tab` indent as usual. With a suggestion that is not a tag (e.g. from another plugin), they are left to the editor or that plugin.
+
+## Working with other tag completion plugins
+
+Several plugins can add suggestions to the same list. This plugin follows a small convention so that they work together without knowing each other:
+
+- Its suggestions come in an own section, *Inline tags*, first. Other plugins following the convention use their own section below it.
+- Matching and ranking come from a shared file (`src/fuzzy.ts`), so all of them match, rank and underline alike.
+- `Tab`/`Shift-Tab` work level by level on any tag suggestion without its own insert action whose prefix fits the typed one, whichever plugin it comes from. Other suggestions are left alone.
 
 ## Advantages over the Inline Tags plugin
 
@@ -36,7 +45,7 @@ Inline Tags, on the other hand, works without Tag Navigator, also supports the l
 
 This is a proof of concept.
 
-- **Tags are rebuilt, not shared.** Tag Navigator keeps its tag index in memory and does not expose it to other plugins. This plugin reads Tag Navigator's settings and builds its own index from the note bodies. Notes are therefore read and held in memory a second time.
+- **Tags are rebuilt, not shared.** Tag Navigator keeps its tag index in memory and does not expose it to other plugins. This plugin reads Tag Navigator's settings and builds its own index from the note bodies. Notes are therefore read and held in memory a second time. After the first full read, only notes changed since then (Joplin's change feed) are read again.
 - **Own, simpler parser.** Results can differ from Tag Navigator in edge cases. Not supported:
   - front matter tags
   - resolving date tags in notes: a literal `#today` is listed as `#today`, not as today's date
@@ -45,7 +54,7 @@ This is a proof of concept.
   - `minCount`
 - **Changes to Tag Navigator's settings take effect with a delay.** Joplin only tells a plugin when its *own* settings change. So when you change, for example, the tag regex in Tag Navigator, this plugin does not notice right away. It reads Tag Navigator's settings again whenever it refreshes its tag list: when you open another note, after a sync, or when the list is more than a minute old. To apply a change immediately, tick *Reload tags now* in this plugin's settings. The tick then disappears by itself. It is a checkbox rather than a button because plugins cannot add buttons to the settings page.
 - **Coupled to Tag Navigator internals.** The plugin reads settings by Tag Navigator's plugin ID and `itags.*` keys. If those are renamed, Tag Navigator counts as missing and this plugin stays inactive.
-- **Trigger.** Suggestions only open for words starting with a symbol. Tags without a leading symbol, e.g. `tag:foo`, are not completed.
+- **Trigger.** Suggestions only open for words starting with a symbol that a known tag (or a tag in the open note) starts with. Tags without a leading symbol, e.g. `tag:foo`, are not completed. `Tab` only works on suggestions whose prefix fits the typed one: `#pj` finds `@person/john`, but inserting it needs `Enter`.
 - **Spelling.** Like Tag Navigator, tags are counted case-insensitively (`#Project` and `#project` are one tag). They are suggested and inserted in the spelling most notes use.
 - **Editor.** Only the CodeMirror 6 editor is supported, not the legacy editor. Mobile has no Tab key: tap a suggestion or type `/` instead.
 - **First use.** The first suggestion list after start may take a moment while the index is built.

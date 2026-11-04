@@ -46,7 +46,7 @@ This is a proof of concept.
 - **Changes to Tag Navigator's settings take effect with a delay.** Joplin only tells a plugin when its *own* settings change. So when you change, for example, the tag regex in Tag Navigator, this plugin does not notice right away. It reads Tag Navigator's settings again whenever it refreshes its tag list: when you open another note, after a sync, or when the list is more than a minute old. To apply a change immediately, tick *Reload tags now* in this plugin's settings. The tick then disappears by itself. It is a checkbox rather than a button because plugins cannot add buttons to the settings page.
 - **Coupled to Tag Navigator internals.** The plugin reads settings by Tag Navigator's plugin ID and `itags.*` keys. If those are renamed, Tag Navigator counts as missing and this plugin stays inactive.
 - **Trigger.** Suggestions only open for words starting with a symbol. Tags without a leading symbol, e.g. `tag:foo`, are not completed.
-- **Lowercase.** Tags are suggested and inserted in lowercase, as Tag Navigator stores them.
+- **Spelling.** Like Tag Navigator, tags are counted case-insensitively (`#Project` and `#project` are one tag). They are suggested and inserted in the spelling most notes use.
 - **Editor.** Only the CodeMirror 6 editor is supported, not the legacy editor. Mobile has no Tab key: tap a suggestion or type `/` instead.
 - **First use.** The first suggestion list after start may take a moment while the index is built.
 

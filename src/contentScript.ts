@@ -74,10 +74,11 @@ function completeTags(pluginContext: ContentScriptContext) {
       return null;
     }
 
+    const known = new Set(response.tags.map(({ label }) => label.toLocaleLowerCase()));
     const counts = new Map(response.tags.map(({ label, count }) => [label, count]));
-    for (const tag of parseTags(context.state.doc.toString(), settings)) {
-      if (!counts.has(tag)) {
-        counts.set(tag, 0);
+    for (const [key, spelling] of parseTags(context.state.doc.toString(), settings)) {
+      if (!known.has(key)) {
+        counts.set(spelling, 0);
       }
     }
     dateNames = new Set(response.dateTags.map((d) => d.tag.replace(/[+-]\d+$/, '')));
@@ -91,7 +92,7 @@ function completeTags(pluginContext: ContentScriptContext) {
       ...(dateNames.has(token) ? [{ label: `${token}+`, detail: 'offset' }] : []),
       ...matchTags([...counts].map(([label, count]) => ({ label, count })), token).map(({ label, count }) => ({
         label,
-        detail: dateNames.has(label) ? 'date tag' : count ? String(count) : undefined,
+        detail: dateNames.has(label.toLocaleLowerCase()) ? 'date tag' : count ? String(count) : undefined,
       })),
     ]
       .filter((option, i, all) => all.findIndex((other) => other.label === option.label) === i)
@@ -113,7 +114,7 @@ function tab(view: EditorView): boolean {
     return false;
   }
   // A date tag name works like a level: Tab inserts it and offers its date and offset.
-  if (dateNames.has(selected.label.replace(/\+$/, ''))) {
+  if (dateNames.has(selected.label.toLocaleLowerCase().replace(/\+$/, ''))) {
     return replaceToken(view, selected.label);
   }
   const others = currentCompletions(view.state).map((option) => option.label);

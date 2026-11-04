@@ -8,7 +8,7 @@ const contentScriptId = 'tagNavigatorCompanion';
 const tagNavigatorPrefix = 'plugin-joplin.plugin.alondmnt.tag-navigator.itags.';
 const maxAge = 60 * 1000;
 
-const notes = new Map<string, { updated: number; tags: Set<string> }>();
+const notes = new Map<string, { updated: number; tags: Map<string, string> }>();
 let rawSettings: RawTagSettings = defaultSettings;
 let settings: TagSettings = compileSettings(defaultSettings);
 let tagList: Rankable[] | null = null;
@@ -36,14 +36,23 @@ async function readSettings(): Promise<RawTagSettings | null> {
   return raw as unknown as RawTagSettings;
 }
 
+// Notes per tag, shown in the spelling most notes use.
 function countTags(): Rankable[] {
   const counts = new Map<string, number>();
+  const spellings = new Map<string, number>();
+  const best = new Map<string, string>();
   for (const { tags } of notes.values()) {
-    for (const tag of tags) {
-      counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    for (const [key, spelling] of tags) {
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+      const n = (spellings.get(spelling) ?? 0) + 1;
+      spellings.set(spelling, n);
+      const current = best.get(key);
+      if (current === undefined || n > spellings.get(current) || (n === spellings.get(current) && spelling < current)) {
+        best.set(key, spelling);
+      }
     }
   }
-  return [...counts].map(([label, count]) => ({ label, count }));
+  return [...counts].map(([key, count]) => ({ label: best.get(key), count }));
 }
 
 async function update(): Promise<void> {

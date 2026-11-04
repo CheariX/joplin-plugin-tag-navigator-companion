@@ -1,13 +1,25 @@
 import { compileSettings, createSafeRegex, defTagRegex, defaultSettings, parseTags } from '../src/parser';
 
 const parse = (text: string, overrides = {}) =>
-  [...parseTags(text, compileSettings({ ...defaultSettings, ...overrides }))].sort();
+  [...parseTags(text, compileSettings({ ...defaultSettings, ...overrides })).keys()].sort();
 
 const customRegex = '(?<=^|\\s)([#@!]|//)[^\\s#@!\'",.()\\[\\]:;\\?\\\\]+';
 
 describe('parseTags', () => {
   test('default regex, lowercase, deduplicated', () => {
     expect(parse('Text #Tag and #tag, #other.\n#third')).toEqual(['#other', '#tag', '#third']);
+  });
+
+  test('keeps the spelling of the first occurrence per lower-case key', () => {
+    const tags = parseTags('#Project/Alpha `#Code` #project/beta #İx #Ab', compileSettings(defaultSettings));
+    expect([...tags]).toEqual([
+      ['#project', '#Project'],
+      ['#project/alpha', '#Project/Alpha'],
+      ['#project/beta', '#project/beta'],
+      // Lower case of 'İ' is longer, so its spelling and positions behind it fall back to lower case.
+      ['#i̇x', '#i̇x'],
+      ['#ab', '#ab'],
+    ]);
   });
 
   test('ignores tags without leading whitespace', () => {

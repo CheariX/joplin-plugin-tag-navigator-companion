@@ -71,9 +71,16 @@ export function compileSettings(raw: RawTagSettings): TagSettings {
   };
 }
 
-function addTag(tags: Set<string>, tag: string, settings: TagSettings): void {
+// Tags are keyed in lower case, as in Tag Navigator, and keep the spelling of their first occurrence.
+function addTag(tags: Map<string, string>, tag: string, settings: TagSettings): void {
+  const add = (spelling: string) => {
+    const key = spelling.toLocaleLowerCase();
+    if (!tags.has(key)) {
+      tags.set(key, spelling);
+    }
+  };
   if (!settings.nestedTags) {
-    tags.add(tag);
+    add(tag);
     return;
   }
   const key = settings.valueDelim ? tag.split(settings.valueDelim, 1)[0] : tag;
@@ -81,18 +88,19 @@ function addTag(tags: Set<string>, tag: string, settings: TagSettings): void {
   for (let i = 1; i <= parts.length; i++) {
     const child = parts.slice(0, i).join('/').replace(/\/+$/, '');
     if (child) {
-      tags.add(child);
+      add(child);
     }
   }
   if (key !== tag) {
-    tags.add(tag);
+    add(tag);
   }
 }
 
-export function parseTags(text: string, settings: TagSettings): Set<string> {
-  const tags = new Set<string>();
+export function parseTags(text: string, settings: TagSettings): Map<string, string> {
+  const tags = new Map<string, string>();
   let inCodeBlock = false;
-  for (let line of text.toLocaleLowerCase().split('\n')) {
+  for (let original of text.split('\n')) {
+    let line = original.toLocaleLowerCase();
     if (/^\s*```/.test(line)) {
       inCodeBlock = !inCodeBlock;
       continue;
@@ -102,12 +110,16 @@ export function parseTags(text: string, settings: TagSettings): Set<string> {
         continue;
       }
       line = line.replace(/`[^`]*`/g, '``');
+      original = original.replace(/`[^`]*`/g, '``');
     }
-    for (const tag of line.match(settings.tagRegex) ?? []) {
+    // Same regex as Tag Navigator on the lower-case line; the spelling comes from the same position if it fits.
+    for (const match of line.matchAll(settings.tagRegex)) {
+      const tag = match[0];
       if (tag.length > MAX_TOKEN_LENGTH || (settings.excludeRegex && tag.match(settings.excludeRegex))) {
         continue;
       }
-      addTag(tags, tag, settings);
+      const spelling = original.slice(match.index, match.index + tag.length);
+      addTag(tags, spelling.toLocaleLowerCase() === tag ? spelling : tag, settings);
     }
   }
   return tags;

@@ -1,10 +1,10 @@
-import { CompletionContext, CompletionResult, acceptCompletion, completionStatus, currentCompletions, selectedCompletion, startCompletion } from '@codemirror/autocomplete';
+import { Completion, CompletionContext, CompletionResult, acceptCompletion, completionStatus, currentCompletions, selectedCompletion, startCompletion } from '@codemirror/autocomplete';
 import { syntaxTree } from '@codemirror/language';
 import { EditorState, Prec, Text } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { ContentScriptContext, MarkdownEditorContentScriptModule } from 'api/types';
 import { dateTagsFor } from './dateTags';
-import { Rankable, fitsKnownPrefix, hasDanglingSeparator, isTagToken, leadingSymbols, matchTags, nextSegment, parentSegment } from './fuzzy';
+import { Rankable, TagMatch, fitsKnownPrefix, hasDanglingSeparator, isTagToken, leadingSymbols, matchRanges, matchTags, nextSegment, parentSegment } from './fuzzy';
 import { RawTagSettings, TagSettings, compileSettings, defTagRegex, parseTags } from './parser';
 
 interface TagsResponse {
@@ -24,6 +24,8 @@ interface Tags {
 }
 
 const codeNodes = new Set(['FencedCode', 'CodeBlock', 'InlineCode']);
+// Tags written in notes come first; other tag completion plugins use a higher rank.
+const section = { name: 'Inline tags', rank: 0 };
 let cache: Tags | null = null;
 let docTags = new WeakMap<Text, { tags: Map<string, string>; prefixes: Set<string> }>();
 let dateNames = new Set<string>();
@@ -137,14 +139,16 @@ function completeTags(pluginContext: ContentScriptContext) {
     const options = [
       ...(date ? [{ label: date.date, detail: date.label }] : []),
       ...(dateNames.has(token) ? [{ label: `${token}+`, detail: 'offset' }] : []),
-      ...matchTags([...tags.values()], token).map(({ label, notes }) => ({
+      ...matchTags([...tags.values()], token).map(({ label, notes, match }) => ({
         label,
+        match,
         detail: dateNames.has(label.toLocaleLowerCase()) ? 'date tag' : notes ? String(notes) : undefined,
       })),
     ]
       .filter((option, i, all) => all.findIndex((other) => other.label === option.label) === i)
-      .map((option) => ({ ...option, type: 'itag' }));
-    return options.length ? { from: match.from, to: match.to, options, filter: false } : null;
+      .map((option) => ({ ...option, type: 'itag', section }));
+    const getMatch = (option: Completion & { match?: TagMatch }) => (option.match ? matchRanges(option.match) : []);
+    return options.length ? { from: match.from, to: match.to, options, filter: false, getMatch } : null;
   };
 }
 

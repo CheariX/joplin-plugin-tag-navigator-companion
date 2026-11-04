@@ -1,7 +1,6 @@
 import joplin from 'api';
 import { ContentScriptType, SettingItemType } from 'api/types';
-import { dateTagsFor } from './dateTags';
-import { Rankable, isTagToken, matchTags } from './fuzzy';
+import { Rankable } from './fuzzy';
 import { RawTagSettings, TagSettings, compileSettings, defaultSettings, parseTags } from './parser';
 
 const contentScriptId = 'tagNavigatorCompanion';
@@ -12,6 +11,7 @@ const notes = new Map<string, { updated: number; tags: Map<string, string> }>();
 let rawSettings: RawTagSettings = defaultSettings;
 let settings: TagSettings = compileSettings(defaultSettings);
 let tagList: Rankable[] | null = null;
+let version = 0;
 let tagNavigatorActive = false;
 let lastUpdate = 0;
 let stale = true;
@@ -64,7 +64,8 @@ async function update(): Promise<void> {
     lastUpdate = Date.now();
     return;
   }
-  if (JSON.stringify(raw) !== JSON.stringify(rawSettings)) {
+  const settingsChanged = JSON.stringify(raw) !== JSON.stringify(rawSettings);
+  if (settingsChanged) {
     notes.clear();
     rawSettings = raw;
     settings = compileSettings(raw);
@@ -101,7 +102,11 @@ async function update(): Promise<void> {
     notes.set(id, { updated: note.updated_time, tags: parseTags(note.body ?? '', settings) });
   }
 
-  tagList = countTags();
+  const list = countTags();
+  if (settingsChanged || JSON.stringify(list) !== JSON.stringify(tagList)) {
+    tagList = list;
+    version++;
+  }
   lastUpdate = Date.now();
 }
 
@@ -123,7 +128,8 @@ function refresh(): void {
     });
 }
 
-async function getTags(token: string) {
+// The editor keeps the tag list and only gets it again when its version is outdated.
+async function getTags(known: number) {
   refresh();
   if (!tagList) {
     await running;
@@ -131,11 +137,7 @@ async function getTags(token: string) {
   if (!tagNavigatorActive) {
     return null;
   }
-  return {
-    settings: rawSettings,
-    tags: matchTags(tagList ?? [], token).map(({ label, count }) => ({ label, count })),
-    dateTags: dateTagsFor(token, rawSettings, locale),
-  };
+  return known === version ? { version } : { version, settings: rawSettings, locale, tags: tagList ?? [] };
 }
 
 joplin.plugins.register({
@@ -176,11 +178,11 @@ joplin.plugins.register({
 
     await joplin.contentScripts.register(ContentScriptType.CodeMirrorPlugin, contentScriptId, './contentScript.js');
     await joplin.contentScripts.onMessage(contentScriptId, async (message: unknown) => {
-      const { name, token } = (message ?? {}) as { name?: unknown; token?: unknown };
-      if (name !== 'getTags' || typeof token !== 'string' || !isTagToken(token)) {
+      const { name, version: known } = (message ?? {}) as { name?: unknown; version?: unknown };
+      if (name !== 'getTags' || typeof known !== 'number') {
         return null;
       }
-      return getTags(token);
+      return getTags(known);
     });
   },
 });

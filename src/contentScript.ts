@@ -1,19 +1,31 @@
 import { CompletionContext, CompletionResult, acceptCompletion, completionStatus, currentCompletions, selectedCompletion, startCompletion } from '@codemirror/autocomplete';
 import { syntaxTree } from '@codemirror/language';
-import { EditorState, Prec } from '@codemirror/state';
+import { EditorState, Prec, Text } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { ContentScriptContext, MarkdownEditorContentScriptModule } from 'api/types';
-import type { DateTag } from './dateTags';
-import { Rankable, hasDanglingSeparator, isTagToken, matchTags, nextSegment, parentSegment } from './fuzzy';
-import { RawTagSettings, compileSettings, parseTags } from './parser';
+import { dateTagsFor } from './dateTags';
+import { Rankable, fitsKnownPrefix, hasDanglingSeparator, isTagToken, leadingSymbols, matchTags, nextSegment, parentSegment } from './fuzzy';
+import { RawTagSettings, TagSettings, compileSettings, defTagRegex, parseTags } from './parser';
 
 interface TagsResponse {
-  settings: RawTagSettings;
+  version: number;
+  settings?: RawTagSettings;
+  locale?: string;
+  tags?: Rankable[];
+}
+
+interface Tags {
+  version: number;
+  raw: RawTagSettings;
+  settings: TagSettings;
+  locale: string;
   tags: Rankable[];
-  dateTags: DateTag[];
+  prefixes: Set<string>;
 }
 
 const codeNodes = new Set(['FencedCode', 'CodeBlock', 'InlineCode']);
+let cache: Tags | null = null;
+let docTags = new WeakMap<Text, { tags: Map<string, string>; prefixes: Set<string> }>();
 let dateNames = new Set<string>();
 
 const optionTheme = EditorView.baseTheme({
@@ -33,13 +45,35 @@ const optionTheme = EditorView.baseTheme({
 });
 
 function isTagsResponse(response: any): response is TagsResponse {
-  return !!response
-    && typeof response.settings?.tagRegex === 'string'
+  return typeof response?.version === 'number' && (response.tags === undefined || (
+    typeof response.settings?.tagRegex === 'string'
     && typeof response.settings?.excludeRegex === 'string'
+    && typeof response.locale === 'string'
     && Array.isArray(response.tags)
     && response.tags.every((tag: any) => typeof tag?.label === 'string' && typeof tag.count === 'number')
-    && Array.isArray(response.dateTags)
-    && response.dateTags.every((d: any) => typeof d?.tag === 'string' && typeof d.date === 'string' && typeof d.label === 'string');
+  ));
+}
+
+function cacheTags({ version, settings: raw, locale, tags }: Required<TagsResponse>): Tags {
+  const settings = compileSettings(raw);
+  const names = dateTagsFor('', raw, locale).map((d) => d.tag);
+  const prefixes = new Set([...tags.map((tag) => tag.label), ...names].map(leadingSymbols));
+  if (settings.tagRegex === defTagRegex) {
+    prefixes.add('#');
+  }
+  docTags = new WeakMap();
+  return { version, raw, settings, locale, tags, prefixes };
+}
+
+// Tags of the open note, parsed once per document version.
+function noteTags(doc: Text, settings: TagSettings): { tags: Map<string, string>; prefixes: Set<string> } {
+  let note = docTags.get(doc);
+  if (!note) {
+    const tags = parseTags(doc.toString(), settings);
+    note = { tags, prefixes: new Set([...tags.values()].map(leadingSymbols)) };
+    docTags.set(doc, note);
+  }
+  return note;
 }
 
 function inCode(context: CompletionContext): boolean {
@@ -59,40 +93,53 @@ function tokenAt(state: EditorState, pos = state.selection.main.head): { from: n
   return { from: pos - text.length, to: pos + rest.length, text };
 }
 
+// A tag-like token outside code whose prefix is used by a known tag or a tag of this note.
+function wanted(context: CompletionContext, token: string): boolean {
+  if (!isTagToken(token) || !cache) {
+    return isTagToken(token);
+  }
+  return (fitsKnownPrefix(token, cache.prefixes) || fitsKnownPrefix(token, noteTags(context.state.doc, cache.settings).prefixes))
+    && !(cache.settings.ignoreCodeBlocks && inCode(context));
+}
+
 function completeTags(pluginContext: ContentScriptContext) {
   return async (context: CompletionContext): Promise<CompletionResult | null> => {
     const match = tokenAt(context.state, context.pos);
-    if (!isTagToken(match.text)) {
+    if (!wanted(context, match.text)) {
       return null;
     }
-    const response = await pluginContext.postMessage({ name: 'getTags', token: match.text });
+    const response = await pluginContext.postMessage({ name: 'getTags', version: cache?.version ?? -1 });
     if (!isTagsResponse(response)) {
       return null;
     }
-    const settings = compileSettings(response.settings);
-    if (settings.ignoreCodeBlocks && inCode(context)) {
+    if (response.tags) {
+      cache = cacheTags(response as Required<TagsResponse>);
+    }
+    if (cache?.version !== response.version || !wanted(context, match.text)) {
       return null;
     }
 
-    const known = new Set(response.tags.map(({ label }) => label.toLocaleLowerCase()));
-    const counts = new Map(response.tags.map(({ label, count }) => [label, count]));
-    for (const [key, spelling] of parseTags(context.state.doc.toString(), settings)) {
-      if (!known.has(key)) {
-        counts.set(spelling, 0);
+    // Tags of the open note rank above equally good matches, even if not saved yet.
+    const tags = new Map(cache.tags.map((tag) => [tag.label.toLocaleLowerCase(), { ...tag, notes: tag.count }]));
+    for (const [key, label] of noteTags(context.state.doc, cache.settings).tags) {
+      const tag = tags.get(key);
+      tags.set(key, { label: tag?.label ?? label, count: (tag?.count ?? 0) + 1, notes: tag?.notes ?? 0 });
+    }
+    const dateTags = dateTagsFor(match.text, cache.raw, cache.locale);
+    dateNames = new Set(dateTags.map((d) => d.tag.replace(/[+-]\d+$/, '')));
+    for (const name of dateNames) {
+      if (!tags.has(name)) {
+        tags.set(name, { label: name, count: 0, notes: 0 });
       }
     }
-    dateNames = new Set(response.dateTags.map((d) => d.tag.replace(/[+-]\d+$/, '')));
-    for (const name of dateNames) {
-      counts.set(name, counts.get(name) ?? 0);
-    }
     const token = match.text.toLocaleLowerCase();
-    const date = response.dateTags.find((d) => d.tag === token);
+    const date = dateTags.find((d) => d.tag === token);
     const options = [
       ...(date ? [{ label: date.date, detail: date.label }] : []),
       ...(dateNames.has(token) ? [{ label: `${token}+`, detail: 'offset' }] : []),
-      ...matchTags([...counts].map(([label, count]) => ({ label, count })), token).map(({ label, count }) => ({
+      ...matchTags([...tags.values()], token).map(({ label, notes }) => ({
         label,
-        detail: dateNames.has(label.toLocaleLowerCase()) ? 'date tag' : count ? String(count) : undefined,
+        detail: dateNames.has(label.toLocaleLowerCase()) ? 'date tag' : notes ? String(notes) : undefined,
       })),
     ]
       .filter((option, i, all) => all.findIndex((other) => other.label === option.label) === i)
